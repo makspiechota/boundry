@@ -28,6 +28,26 @@ diagram (LikeC4)  ──►  boundary model  ──►  dependency-cruiser rules
 Elements without a `folder` (actors, external systems, notes) are ignored, so a
 rich communication diagram and an enforcement diagram can be the same file.
 
+## See it
+
+The diagram you draw *is* the whole spec. Below is the example architecture that
+Boundry's own end-to-end suite enforces — a hexagonal model with a pure DDD
+core, CQRS, and a public-API boundary.
+
+**[Explore every view interactively →](https://makspiechota.github.io/boundry/)**
+
+### Top-level layers
+
+![Top-level layers: entry point, domain, application, infrastructure](docs/diagrams/example-overview.png)
+
+### Inside the domain — the rules are what's *not* drawn
+
+Aggregates compose Entities and hold Value Objects; Entities may reach Value
+Objects but never Aggregates; Value Objects import nothing. Every missing arrow
+is a forbidden dependency Boundry will reject.
+
+![Domain internals: aggregates, entities, value objects](docs/diagrams/example-domain.png)
+
 ## Install
 
 ```bash

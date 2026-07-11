@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Boundry — interactive architecture diagrams</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0f1115;
+        color: #e6e8ee;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+      main { max-width: 640px; padding: 2rem; }
+      h1 { font-size: 1.9rem; margin: 0 0 0.25rem; }
+      p.sub { color: #9aa3b2; margin: 0 0 2rem; }
+      a.card {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        border: 1px solid #262b36;
+        border-radius: 12px;
+        padding: 1.1rem 1.3rem;
+        margin: 0.75rem 0;
+        background: #161a22;
+        transition: border-color 0.15s, transform 0.15s;
+      }
+      a.card:hover { border-color: #3b82f6; transform: translateY(-2px); }
+      a.card b { font-size: 1.1rem; }
+      a.card span { display: block; color: #9aa3b2; font-size: 0.92rem; margin-top: 0.2rem; }
+      footer { margin-top: 2rem; color: #6b7280; font-size: 0.9rem; }
+      footer a { color: #9aa3b2; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Boundry — interactive diagrams</h1>
+      <p class="sub">The architecture diagrams below are the exact source Boundry compiles into dependency-linter rules.</p>
+
+      <a class="card" href="example/">
+        <b>Hexagonal + CQRS + DDD example →</b>
+        <span>A layered domain/application/infrastructure model — the same diagram enforced by Boundry's e2e test suite.</span>
+      </a>
+
+      <a class="card" href="self/">
+        <b>Boundry's own architecture →</b>
+        <span>Boundry dogfoods its own layers: a pure boundary model, ports, pipeline, and pluggable adapters.</span>
+      </a>
+
+      <footer>
+        <a href="https://github.com/makspiechota/boundry">github.com/makspiechota/boundry</a>
+      </footer>
+    </main>
+  </body>
+</html>
