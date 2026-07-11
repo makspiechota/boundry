@@ -1,0 +1,75 @@
+specification {
+  element layer {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  layer sdk 'SDK — core' {
+    module model 'Boundary Model' {
+      metadata { folder 'src/core/model' }
+    }
+    module ports 'Ports' {
+      metadata { folder 'src/core/ports' }
+    }
+    module pipeline 'Pipeline' {
+      metadata { folder 'src/core/pipeline' }
+    }
+  }
+
+  layer adapters 'Adapters' {
+    module visualizer 'Visualizer Adapter' {
+      metadata { folder 'src/adapters/visualizer' }
+    }
+    module enforcer 'Enforcer Adapter' {
+      metadata { folder 'src/adapters/enforcer' }
+    }
+  }
+
+  module cli 'CLI' {
+    metadata { folder 'src/cli' }
+  }
+
+  // ── SDK internals: the model is the pure centre ──────────────
+  sdk.ports -> sdk.model 'references'
+  sdk.pipeline -> sdk.ports 'orchestrates through'
+
+  // ── Adapters implement ports and touch the model ─────────────
+  adapters.visualizer -> sdk.ports 'implements'
+  adapters.visualizer -> sdk.model 'produces'
+  adapters.enforcer -> sdk.ports 'implements'
+  adapters.enforcer -> sdk.model 'reads'
+
+  // ── CLI is the composition root ──────────────────────────────
+  cli -> sdk.pipeline 'drives'
+  cli -> adapters.visualizer 'wires'
+  cli -> adapters.enforcer 'wires'
+}
+
+views {
+  view index {
+    title 'Boundry — enforced architecture'
+    include *
+  }
+
+  view sdkView of sdk {
+    title 'SDK internals'
+    include sdk, sdk.*
+    include adapters
+  }
+
+  view adaptersView of adapters {
+    title 'Adapters'
+    include adapters, adapters.*
+    include sdk, cli
+  }
+}

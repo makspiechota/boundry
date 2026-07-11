@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.dependency-cruiser.cjs
+*.log
+
+# editor session files
+session
+*.vim

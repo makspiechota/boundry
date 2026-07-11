@@ -1,0 +1,161 @@
+specification {
+  element layer {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  layer domain 'Domain — DDD' {
+    module aggregates 'Aggregates' {
+      metadata { folder 'src/domain/aggregates' }
+    }
+    module entities 'Entities' {
+      metadata { folder 'src/domain/entities' }
+    }
+    module valueObjects 'Value Objects' {
+      metadata { folder 'src/domain/value-objects' }
+    }
+    module domainEvents 'Domain Events' {
+      metadata { folder 'src/domain/events' }
+    }
+  }
+
+  layer application 'Application' {
+    module service 'Service — public API' {
+      metadata { folder 'src/application/service' }
+    }
+    module commands 'Commands' {
+      metadata { folder 'src/application/commands' }
+    }
+    module queries 'Queries' {
+      metadata { folder 'src/application/queries' }
+    }
+    module appEvents 'Application Events' {
+      metadata { folder 'src/application/events' }
+    }
+    layer ports 'Ports' {
+      layer repositories 'Repository Ports' {
+        module repositoryA 'Repository A' {
+          metadata { folder 'src/application/ports/repositories/repositoryA' }
+        }
+        module repositoryB 'Repository B' {
+          metadata { folder 'src/application/ports/repositories/repositoryB' }
+        }
+      }
+      module serviceAPort 'Service A Port' {
+        metadata { folder 'src/application/ports/service-a-port' }
+      }
+      module eventBusPort 'Event Bus Port' {
+        metadata { folder 'src/application/ports/event-bus-port' }
+      }
+    }
+  }
+
+  layer infrastructure 'Infrastructure' {
+    module repoAdapters 'Repository Adapters' {
+      metadata { folder 'src/infrastructure/repositories' }
+    }
+    module serviceAAdapter 'Service A Adapter' {
+      metadata { folder 'src/infrastructure/service-a-adapter' }
+    }
+    module snsAdapter 'SNS Adapter' {
+      metadata { folder 'src/infrastructure/sns-adapter' }
+    }
+  }
+
+  layer entrypoint 'Entry Point — outside world' {
+    module main 'Main' {
+      metadata { folder 'src/main' }
+    }
+  }
+
+  // ── Domain internals (the heart) ─────────────────────────────
+  domain.aggregates -> domain.entities 'composes'
+  domain.aggregates -> domain.valueObjects 'holds'
+  domain.aggregates -> domain.domainEvents 'raises'
+  domain.entities -> domain.valueObjects 'holds'
+  domain.domainEvents -> domain.valueObjects 'carries'
+
+  // ── Application: `service` is the only public entry point ─────
+  application.service -> application.commands 'dispatches'
+  application.service -> application.queries 'runs'
+
+  // CQRS reaches aggregates only through repository ports
+  application.commands -> application.ports.repositories.repositoryA 'load / save'
+  application.commands -> application.ports.repositories.repositoryB 'load / save'
+  application.commands -> application.ports.serviceAPort 'calls'
+  application.commands -> application.ports.eventBusPort 'publishes'
+  application.commands -> application.appEvents 'emits'
+  application.queries -> application.ports.repositories.repositoryA 'reads'
+  application.queries -> application.ports.repositories.repositoryB 'reads'
+
+  // Repository ports expose aggregates; other ports touch only VOs / events
+  application.ports.repositories.repositoryA -> domain.aggregates 'returns'
+  application.ports.repositories.repositoryB -> domain.aggregates 'returns'
+  application.ports.serviceAPort -> domain.valueObjects 'typed by'
+  application.ports.eventBusPort -> domain.domainEvents 'publishes'
+  application.appEvents -> domain.domainEvents 'wraps'
+
+  // ── Infrastructure implements ports (the hexagon edge) ───────
+  infrastructure.repoAdapters -> application.ports.repositories.repositoryA 'implements'
+  infrastructure.repoAdapters -> application.ports.repositories.repositoryB 'implements'
+  infrastructure.repoAdapters -> domain.aggregates 'rehydrates'
+  infrastructure.serviceAAdapter -> application.ports.serviceAPort 'implements'
+  infrastructure.serviceAAdapter -> domain.valueObjects 'constructs'
+  infrastructure.snsAdapter -> application.ports.eventBusPort 'implements'
+  infrastructure.snsAdapter -> domain.domainEvents 'serializes'
+
+  // ── The only public surface: outside code may reach `service` only ──
+  entrypoint.main -> application.service 'calls the public API'
+}
+
+views {
+  // Top level only — the three rings, collapsed. Click a ring to drill in.
+  view index {
+    title 'System — top level'
+    include entrypoint, domain, application, infrastructure
+  }
+
+  // One level inside the domain: the DDD building blocks.
+  view domainView of domain {
+    title 'Domain — DDD internals'
+    include domain, domain.*
+  }
+
+  // One level inside the application: CQRS + the ports group (collapsed).
+  view applicationView of application {
+    title 'Application — CQRS'
+    include application, application.*
+    include domain, infrastructure
+  }
+
+  // Drill into the ports group; the repositories group stays collapsed.
+  view portsView of application.ports {
+    title 'Application — ports'
+    include application.ports, application.ports.*
+    include domain
+  }
+
+  // Drill into the repository ports.
+  view repositoriesView of application.ports.repositories {
+    title 'Application — repository ports'
+    include application.ports.repositories, application.ports.repositories.*
+    include domain.aggregates
+  }
+
+  // One level inside infrastructure: the driven adapters.
+  view infraView of infrastructure {
+    title 'Infrastructure — adapters'
+    include infrastructure, infrastructure.*
+    include application.ports, domain
+  }
+}

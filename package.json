@@ -1,0 +1,64 @@
+{
+  "name": "boundry",
+  "version": "0.0.1",
+  "description": "Compile a C4 architecture diagram into a deterministic dependency linter. Deterministic architectural guardrails for AI agents and humans.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Maksymilian Piechota",
+  "homepage": "https://github.com/makspiechota/boundry#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makspiechota/boundry.git"
+  },
+  "bugs": {
+    "url": "https://github.com/makspiechota/boundry/issues"
+  },
+  "keywords": [
+    "architecture",
+    "dependency-cruiser",
+    "likec4",
+    "c4",
+    "linter",
+    "guardrails",
+    "hexagonal",
+    "ddd",
+    "typescript",
+    "ai-agents"
+  ],
+  "bin": {
+    "boundry": "./dist/cli/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "boundry": "tsx src/cli/index.ts",
+    "generate": "tsx src/cli/index.ts generate --arch arch --out .dependency-cruiser.cjs",
+    "check": "tsx src/cli/index.ts check --arch arch src",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test src/__tests__/e2e/*.e2e.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "dependency-cruiser": "^16.4.0",
+    "likec4": "^1.46.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
