@@ -55,11 +55,11 @@
   },
   "dependencies": {
     "dependency-cruiser": "^16.4.0",
-    "likec4": "^1.46.0"
+    "likec4": "^1.46.0",
+    "typescript": "^5.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "tsx": "^4.19.0"
   }
 }

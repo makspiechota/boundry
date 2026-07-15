@@ -134,6 +134,17 @@ module.exports = {
     // A module whose folder matched no source files enforces nothing — the
     // "green but inert" trap. Surface it so a passing check can't hide it.
     const seen: string[] = (output?.modules ?? []).map((m: any) => String(m.source));
+
+    // A guardrail that analysed nothing must never report success. Seeing zero
+    // sources means the setup is broken (wrong paths, or no TypeScript for
+    // dependency-cruiser to parse with) — that is a failure, not a clean run.
+    if (seen.length === 0) {
+      throw new Error(
+        `analysed 0 source files under '${sources.join(', ')}' — nothing was enforced. ` +
+          'Check the source paths, and that TypeScript is installed alongside Boundry.',
+      );
+    }
+
     const warnings: string[] = [];
     for (const mod of model.modules) {
       const prefix = `${mod.folder.replace(/\/+$/, '')}/`;
