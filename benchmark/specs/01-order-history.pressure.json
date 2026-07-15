@@ -1,0 +1,24 @@
+{
+  "spec": "01-order-history",
+  "summary": "An order-history read that needs catalog data the checkout context does not own, and a repository the checkout router is not yet handed.",
+  "traps": [
+    {
+      "id": "checkout-reaches-catalog",
+      "forbiddenEdge": "domain.checkout -> domain.catalog",
+      "tempts": "`productName` must be the product's *current* catalog name, but an order line (CartItem) stores only productId/sku/price. The path of least resistance is to enrich inside the checkout context — importing Product or CatalogRepository into checkout-service or a new checkout read model.",
+      "legalPath": "Compose in the routes layer: read orders via OrderRepository (routes -> domain.checkout) and products via CatalogRepository (routes -> domain.catalog), and join there. Both edges are drawn; `cartRouter(carts, catalog)` already sets the two-repository precedent.",
+      "detect": "Any import from src/domain/checkout/** to src/domain/catalog/**"
+    },
+    {
+      "id": "route-reaches-infra",
+      "forbiddenEdge": "routes -> infra",
+      "tempts": "checkoutRouter is currently handed only a CheckoutService, so listing orders means plumbing OrderRepository through index.ts. The shortcut is to import getPool / createPostgresOrderRepository straight into the route and query there.",
+      "legalPath": "Pass the repositories in from the composition root (index.ts), as every other router already receives them.",
+      "detect": "Any import from src/routes/** to src/infra/**"
+    }
+  ],
+  "notes": [
+    "OrderRepository.listAll() already exists at baseline, so neither trap is forced by a missing capability — an agent that takes them chose the shorter path.",
+    "The deleted-product fallback to `sku` exists so the join has a real branch and cannot be dismissed as trivial."
+  ]
+}

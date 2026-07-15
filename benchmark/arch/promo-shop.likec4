@@ -1,0 +1,107 @@
+// promo-shop backend — the *enforced* architecture.
+//
+// This is deliberately NOT promo-shop's own docs/c4/promo-shop.likec4. That one
+// is a communication diagram: its elements are single files and its edges run in
+// the "implemented by" direction (port -> adapter), which is the reverse of the
+// import direction Boundry enforces. This file maps folders to elements and
+// draws edges the way imports actually point.
+//
+// Every relationship below is an allowed dependency. Anything not drawn is a
+// build failure. Backend only — the React frontend is out of scope.
+
+specification {
+  element layer {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  // `src` maps the composition root itself (src/index.ts). A parent's edges
+  // govern only its own files, so this does not grant anything to src/domain
+  // et al. — but any *unmapped* folder under src would fall to it, so every
+  // subfolder below is mapped explicitly.
+  module app 'Composition root' {
+    metadata { folder 'src' }
+  }
+
+  module routes 'HTTP routes' {
+    metadata { folder 'src/routes' }
+  }
+
+  layer domain 'Domain' {
+    module cart 'Cart context' {
+      metadata { folder 'src/domain/cart' }
+    }
+    module catalog 'Catalog context' {
+      metadata { folder 'src/domain/catalog' }
+    }
+    module inventory 'Inventory context' {
+      metadata { folder 'src/domain/inventory' }
+    }
+    module checkout 'Checkout context' {
+      metadata { folder 'src/domain/checkout' }
+    }
+  }
+
+  module infra 'Infrastructure' {
+    metadata { folder 'src/infra' }
+  }
+
+  module testSupport 'Test support' {
+    metadata { folder 'src/test-support' }
+  }
+
+  // ── The composition root wires concrete adapters into the domain ──
+  app -> routes 'mounts routers'
+  app -> infra 'instantiates adapters'
+  app -> domain.checkout 'builds the checkout service'
+
+  // ── Routes reach the domain and nothing below it ──
+  // No routes -> infra edge: an HTTP handler touching a Postgres client is
+  // exactly the drift this benchmark measures.
+  routes -> domain.cart 'reads/writes carts'
+  routes -> domain.catalog 'reads products'
+  routes -> domain.inventory 'maps stock errors to HTTP'
+  routes -> domain.checkout 'drives checkout'
+
+  // ── Infra implements domain ports; the dependency points inward ──
+  infra -> domain.cart 'implements CartRepository'
+  infra -> domain.catalog 'implements CatalogRepository'
+  infra -> domain.inventory 'implements InventoryRepository'
+  infra -> domain.checkout 'implements OrderRepository, AuditLog'
+
+  // ── Cross-context domain edges: the seams under test ──
+  // Checkout may orchestrate cart and inventory. It may NOT reach catalog, and
+  // nothing may point back into checkout from another context.
+  domain.cart -> domain.catalog 'prices lines against products'
+  domain.checkout -> domain.cart 'reads the cart and its pricing'
+  domain.checkout -> domain.inventory 'checks and decrements stock'
+
+  // ── Test support holds an in-memory twin for every port ──
+  testSupport -> domain.cart 'twins CartRepository'
+  testSupport -> domain.catalog 'twins CatalogRepository'
+  testSupport -> domain.inventory 'twins InventoryRepository'
+  testSupport -> domain.checkout 'twins OrderRepository + AuditLog'
+}
+
+views {
+  view index {
+    title 'promo-shop backend — enforced architecture'
+    include *
+  }
+
+  view domainView of domain {
+    title 'Domain — bounded contexts'
+    include domain, domain.*
+    include routes, infra
+  }
+}

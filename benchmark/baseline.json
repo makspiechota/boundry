@@ -1,0 +1,10 @@
+{
+  "repo": "../../promo-shop",
+  "sha": "253bf84baa618b6d057642939e8f2af059f15176",
+  "shaNote": "refactor(backend): own the AuditLog port in the checkout domain — the first commit at which `boundry check` is green against arch/promo-shop.likec4",
+  "arch": "arch",
+  "checkCwd": "backend",
+  "sources": ["src"],
+  "nodeModules": ["node_modules", "backend/node_modules"],
+  "testCommand": "npx vitest run --root backend"
+}

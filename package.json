@@ -48,7 +48,8 @@
     "boundry": "tsx src/cli/index.ts",
     "generate": "tsx src/cli/index.ts generate --arch arch --out .dependency-cruiser.cjs",
     "check": "tsx src/cli/index.ts check --arch arch src",
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
     "test": "node --import tsx --test src/__tests__/e2e/*.e2e.test.ts",
     "prepublishOnly": "npm run build"
   },
