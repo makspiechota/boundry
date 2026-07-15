@@ -79,6 +79,23 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
       });
     }
   }
+
+  // A declared govern root makes the whole tree the universe: territory no
+  // module claims is forbidden, not free. Additive — the pair rules above still
+  // decide every mapped-to-mapped edge on their own.
+  if (model.governRoot) {
+    const claimed = model.modules.map((m) => folderToRegex(m.folder));
+    for (const from of model.modules) {
+      rules.push({
+        name: `boundary:${from.id}->unmapped`,
+        comment: `${from.title} may not depend on code under '${model.governRoot}' that no module claims`,
+        severity: 'error',
+        from: scopeOf.get(from.id)!,
+        to: { path: folderToRegex(model.governRoot), pathNot: claimed },
+      });
+    }
+  }
+
   return rules;
 }
 
@@ -122,6 +139,25 @@ module.exports = {
       const prefix = `${mod.folder.replace(/\/+$/, '')}/`;
       if (!seen.some((source) => source.startsWith(prefix))) {
         warnings.push(`module '${mod.title}' maps to '${mod.folder}', which matched 0 source files`);
+      }
+    }
+
+    // The symmetric guard: code under a declared govern root that no module
+    // claims. The model not covering the code is as much a gap as the code not
+    // backing the model.
+    if (model.governRoot) {
+      const rootPrefix = `${folderPrefix(model.governRoot)}/`;
+      const claimed = model.modules.map((m) => `${folderPrefix(m.folder)}/`);
+      const unclaimed = new Set<string>();
+      for (const source of seen) {
+        if (!source.startsWith(rootPrefix)) continue;
+        if (claimed.some((prefix) => source.startsWith(prefix))) continue;
+        unclaimed.add(source.slice(0, source.lastIndexOf('/')));
+      }
+      for (const dir of unclaimed) {
+        warnings.push(
+          `'${dir}' is under govern root '${model.governRoot}' but no module claims it`,
+        );
       }
     }
 

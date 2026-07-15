@@ -1,0 +1,37 @@
+specification {
+  element system {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  // Declares the code root as fully governed: every folder under it must be
+  // modelled, so importing unmapped territory is forbidden.
+  system app 'Application' {
+    metadata { governRoot 'src' }
+  }
+
+  module a 'A' {
+    metadata { folder 'src/a' }
+  }
+  module b 'B' {
+    metadata { folder 'src/b' }
+  }
+
+  a -> b
+}
+
+views {
+  view index {
+    include *
+  }
+}

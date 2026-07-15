@@ -103,6 +103,20 @@ export function violationBetween(
   };
 }
 
+/** Assertion: a warning was raised mentioning `fragment`. */
+export function warnsAbout(
+  fragment: string
+): (response: CheckResult) => void {
+  return (response) => {
+    assert.ok(
+      response.warnings.some((w) => w.includes(fragment)),
+      `expected a warning mentioning '${fragment}', got: ${
+        response.warnings.join(" | ") || "(none)"
+      }`
+    );
+  };
+}
+
 /** Assertion: exactly `expected` violations were found — nothing else slips through. */
 export function violationCount(
   expected: number

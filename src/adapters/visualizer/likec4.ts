@@ -97,7 +97,14 @@ export class LikeC4Visualizer implements VisualizerPort {
 
     const modules: Module[] = [];
     const folderIds = new Set<string>();
+    let governRoot: string | undefined;
     for (const el of model.elements()) {
+      // Opt-in: any element may declare the code root as fully governed. It
+      // needs no `folder` of its own — it is a declaration, not a module.
+      const rootMeta = el.getMetadata('governRoot');
+      const declaredRoot = Array.isArray(rootMeta) ? rootMeta[0] : rootMeta;
+      if (declaredRoot && !governRoot) governRoot = declaredRoot;
+
       const meta = el.getMetadata('folder');
       const folder = Array.isArray(meta) ? meta[0] : meta;
       if (folder) {
@@ -119,7 +126,7 @@ export class LikeC4Visualizer implements VisualizerPort {
       }
     }
 
-    return { modules, allowed };
+    return { modules, allowed, governRoot };
   }
 
   /**

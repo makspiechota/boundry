@@ -26,6 +26,10 @@ not draw is forbidden.
 - Imports into non-module paths (`node_modules`, unmapped folders) are never
   constrained — Boundry only governs edges between folders you mapped.
 - One element maps to exactly one folder.
+- **A repo may declare a govern root** — `metadata { governRoot 'src' }` on a
+  top element. Then the whole tree is governed: importing anything under the
+  root that no module claims is a **violation**, and `check` warns about code no
+  module covers. Without it, unmapped folders are ignored (the default).
 - **Nesting is supported.** You may map a parent folder *and* its children. A
   module owns its folder minus its mapped children, so a parent's edges govern
   only the parent's own files — **a child never inherits them** and must be
@@ -105,6 +109,11 @@ the proposal is awaiting approval, and stop there.
 - **Never run `boundry approve`.** That command is the human's.
 - **Never widen an edge to dodge a violation** (e.g. mapping a coarser folder,
   or deleting a module so its rules vanish).
+- **Never route around a boundary through a new folder.** Creating
+  `src/shared-utils/` and importing it, so the blocked dependency travels via
+  unmodelled code, is the same bypass wearing a disguise. Where a `governRoot`
+  is declared this fails outright; where it is not, it is still dishonest —
+  model the folder and propose the edge instead.
 
 ## Checklist
 

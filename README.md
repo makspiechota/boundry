@@ -28,6 +28,25 @@ diagram (LikeC4)  ──►  boundary model  ──►  dependency-cruiser rules
 Elements without a `folder` (actors, external systems, notes) are ignored, so a
 rich communication diagram and an enforcement diagram can be the same file.
 
+### Governing a whole root (opt-in)
+
+By default a folder no element maps to is *ignored* — any module may import it.
+That is what keeps a communication diagram usable as an enforcement diagram, but
+it means brand-new, unmodelled code is free to import. Declare a root as fully
+governed and the whole tree becomes the universe instead:
+
+```likec4
+system app 'App' {
+  metadata { governRoot 'src' }
+}
+```
+
+Now importing anything under `src/` that no module claims is a **violation**, and
+`check` **warns** about code under the root that no module covers. That is the
+mirror of the zero-files warning: the model failing to cover the code is as much
+a gap as the code failing to back the model. Nothing changes unless you declare
+it.
+
 ## See it
 
 The diagram you draw *is* the whole spec. Below is the example architecture that

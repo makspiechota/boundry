@@ -22,6 +22,13 @@ export interface AllowedEdge {
 export interface BoundaryModel {
   modules: Module[];
   allowed: AllowedEdge[];
+  /**
+   * Optional code root declared fully governed. Every folder under it is
+   * expected to be modelled, so importing territory no module claims is
+   * forbidden rather than free. Omitted (the default) = unmapped folders are
+   * ignored, which keeps a communication diagram usable as an enforcement one.
+   */
+  governRoot?: string;
 }
 
 const edgeKey = (edge: AllowedEdge): string => `${edge.from} -> ${edge.to}`;
