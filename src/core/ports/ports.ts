@@ -3,6 +3,11 @@ import type { BoundaryModel } from '../model/boundary-model.js';
 /** A driven port: turns some diagram source into the boundary model. */
 export interface VisualizerPort {
   read(): Promise<BoundaryModel>;
+  /**
+   * Deterministically strip `#proposed` markers from the diagram source,
+   * promoting intent edges to approved. Source-preserving; never an LLM edit.
+   */
+  approve(): Promise<void>;
 }
 
 /** A generated linter config artifact. */

@@ -163,7 +163,9 @@ without touching the core.
 Current limitations:
 
 - One element maps to exactly one folder.
-- Mapping a parent folder *and* its child is undefined — map leaf folders.
+- Nesting is supported: you can map a parent folder *and* its children. A
+  parent's edges govern only the parent's own files — a child never inherits
+  them and must be permitted explicitly.
 - `folder` paths are relative to the repo root (`--cwd`), not the diagram file.
 
 ## License

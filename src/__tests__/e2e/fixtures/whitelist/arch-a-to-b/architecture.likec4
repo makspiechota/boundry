@@ -1,0 +1,29 @@
+specification {
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  module a 'A' {
+    metadata { folder 'src/a' }
+  }
+  module b 'B' {
+    metadata { folder 'src/b' }
+  }
+  module c 'C' {
+    metadata { folder 'src/c' }
+  }
+
+  // Only this edge is whitelisted. a -> c and b -> c stay blocked.
+  a -> b
+}
+
+views {
+  view index {
+    include *
+  }
+}

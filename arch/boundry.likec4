@@ -1,4 +1,5 @@
 specification {
+  color proposed #f59e0b
   element layer {
     style {
       shape rectangle
@@ -11,6 +12,7 @@ specification {
       color green
     }
   }
+  tag proposed
 }
 
 model {
@@ -42,6 +44,7 @@ model {
   // ── SDK internals: the model is the pure centre ──────────────
   sdk.ports -> sdk.model 'references'
   sdk.pipeline -> sdk.ports 'orchestrates through'
+  sdk.pipeline -> sdk.model 'compares for verify'
 
   // ── Adapters implement ports and touch the model ─────────────
   adapters.visualizer -> sdk.ports 'implements'

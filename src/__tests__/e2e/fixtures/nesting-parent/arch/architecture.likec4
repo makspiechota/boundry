@@ -1,0 +1,31 @@
+specification {
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  module application 'Application' {
+    metadata { folder 'src/application' }
+  }
+  // A child mapped alongside its parent — the overlapping-folder case.
+  module appSecret 'Secret' {
+    metadata { folder 'src/application/secret' }
+  }
+  module infrastructure 'Infrastructure' {
+    metadata { folder 'src/infrastructure' }
+  }
+
+  // Top-level edge: application may import infrastructure. This must apply to
+  // application's OWN files only — not to its mapped child `appSecret`.
+  application -> infrastructure
+}
+
+views {
+  view index {
+    include *
+  }
+}

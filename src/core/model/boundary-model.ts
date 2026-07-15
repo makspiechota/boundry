@@ -23,3 +23,20 @@ export interface BoundaryModel {
   modules: Module[];
   allowed: AllowedEdge[];
 }
+
+const edgeKey = (edge: AllowedEdge): string => `${edge.from} -> ${edge.to}`;
+
+/**
+ * Edges allowed at `head` that were not allowed at `base`.
+ *
+ * A `#proposed` edge is deliberately excluded from a model's allow-list, so a
+ * proposal never appears here. That makes this delta exactly the set of
+ * dependencies granted WITHOUT going through a proposal — i.e. self-approvals.
+ */
+export function newlyAllowedEdges(
+  base: BoundaryModel,
+  head: BoundaryModel,
+): AllowedEdge[] {
+  const allowedAtBase = new Set(base.allowed.map(edgeKey));
+  return head.allowed.filter((edge) => !allowedAtBase.has(edgeKey(edge)));
+}

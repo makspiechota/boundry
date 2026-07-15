@@ -9,43 +9,75 @@ const cruise: (
 ) => Promise<{ output: unknown; exitCode: number }> =
   (dependencyCruiser as any).cruise ?? (dependencyCruiser as any).default?.cruise;
 
+interface PathMatcher {
+  path: string;
+  pathNot?: string[];
+}
+
 interface ForbiddenRule {
   name: string;
   comment: string;
   severity: 'error';
-  from: { path: string };
-  to: { path: string[] };
+  from: PathMatcher;
+  to: PathMatcher;
+}
+
+function folderPrefix(folder: string): string {
+  return folder.replace(/\/+$/, '');
 }
 
 function folderToRegex(folder: string): string {
-  const normalized = folder.replace(/\/+$/, '');
-  const escaped = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = folderPrefix(folder).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return `^${escaped}/`;
 }
 
+/** True if `child` is a folder strictly nested under `parent`. */
+function isDescendantFolder(child: string, parent: string): boolean {
+  const c = folderPrefix(child);
+  const p = folderPrefix(parent);
+  return c !== p && c.startsWith(`${p}/`);
+}
+
 /**
- * Derives one forbidden rule per module: files in the module may not import any
- * other module's folder unless the diagram allows that edge. Dependencies into
- * non-module paths (node_modules, unmapped folders) are left untouched — the
- * architecture only governs edges it drew.
+ * Derives one forbidden rule per (module, disallowed target) pair. A module owns
+ * its folder MINUS any mapped descendant folders (which belong to more-specific
+ * modules). That containment handling means a parent-level rule never governs a
+ * child's files, and a module's own internal imports are never flagged.
+ * Dependencies into non-module paths (node_modules, unmapped folders) are left
+ * untouched — the architecture only governs edges it drew.
  */
 function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
   const allowedTargets = new Map<string, Set<string>>();
   for (const m of model.modules) allowedTargets.set(m.id, new Set([m.id]));
   for (const edge of model.allowed) allowedTargets.get(edge.from)?.add(edge.to);
 
-  const rules: ForbiddenRule[] = [];
+  // Each module's scope: its folder, carving out any mapped descendant folders.
+  const scopeOf = new Map<string, PathMatcher>();
   for (const m of model.modules) {
-    const allowed = allowedTargets.get(m.id)!;
-    const forbidden = model.modules.filter((t) => !allowed.has(t.id));
-    if (forbidden.length === 0) continue;
-    rules.push({
-      name: `boundary-${m.id}`,
-      comment: `${m.title} may only depend on: ${[...allowed].sort().join(', ')}`,
-      severity: 'error',
-      from: { path: folderToRegex(m.folder) },
-      to: { path: forbidden.map((t) => folderToRegex(t.folder)) },
-    });
+    const descendants = model.modules
+      .filter((other) => isDescendantFolder(other.folder, m.folder))
+      .map((other) => folderToRegex(other.folder));
+    scopeOf.set(
+      m.id,
+      descendants.length
+        ? { path: folderToRegex(m.folder), pathNot: descendants }
+        : { path: folderToRegex(m.folder) },
+    );
+  }
+
+  const rules: ForbiddenRule[] = [];
+  for (const from of model.modules) {
+    const allowed = allowedTargets.get(from.id)!;
+    for (const to of model.modules) {
+      if (allowed.has(to.id)) continue; // self or an explicitly allowed edge
+      rules.push({
+        name: `boundary:${from.id}->${to.id}`,
+        comment: `${from.title} may not depend on ${to.title}`,
+        severity: 'error',
+        from: scopeOf.get(from.id)!,
+        to: scopeOf.get(to.id)!,
+      });
+    }
   }
   return rules;
 }

@@ -1,0 +1,37 @@
+specification {
+  color proposed #f59e0b
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+  tag proposed
+}
+
+model {
+  module a 'A' {
+    metadata { folder 'src/a' }
+  }
+  module b 'B' {
+    metadata { folder 'src/b' }
+  }
+  module c 'C' {
+    metadata { folder 'src/c' }
+  }
+
+  a -> b
+  a -> c {
+    #proposed
+    style {
+      color proposed
+      line dashed
+    }
+  }
+}
+
+views {
+  view index {
+    include *
+  }
+}

@@ -1,0 +1,46 @@
+specification {
+  element layer {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  layer application 'Application' {
+    module ports 'Ports' {
+      metadata { folder 'src/application/ports' }
+    }
+    module service 'Service' {
+      metadata { folder 'src/application/service' }
+    }
+  }
+
+  layer infrastructure 'Infrastructure' {
+    module db 'Database' {
+      metadata { folder 'src/infrastructure/db' }
+    }
+    module mailer 'Mailer' {
+      metadata { folder 'src/infrastructure/mailer' }
+    }
+  }
+
+  // Two specific leaf edges cross between the subtrees. This makes the diagram
+  // *look* like "application <-> infrastructure" at the top level — but only
+  // these exact edges are permitted.
+  infrastructure.db -> application.ports
+  application.service -> infrastructure.db
+}
+
+views {
+  view index {
+    include *
+  }
+}
