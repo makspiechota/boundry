@@ -1,12 +1,12 @@
 specification {
-  color proposed #f59e0b
   element module {
     style {
       shape rectangle
-      color green
     }
   }
-  tag proposed
+  tag proposed {
+    color #f59e0b
+  }
 }
 
 model {
@@ -17,18 +17,13 @@ model {
     metadata { folder 'src/domain' }
   }
   module shared 'Shared Kernel' {
+    #proposed
     metadata { folder 'src/shared' }
   }
 
   api -> domain
   api -> shared
-  domain -> shared {
-    #proposed
-    style {
-      color proposed
-      line dashed
-    }
-  }
+  domain -> shared #proposed
 }
 
 views {

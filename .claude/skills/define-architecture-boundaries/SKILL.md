@@ -40,11 +40,14 @@ not draw is forbidden.
 
 ```likec4
 specification {
-  color proposed #f59e0b   // marker colour, so proposals are visible
   element module {
     style { shape rectangle }
   }
-  tag proposed             // required to propose changes
+  // Required to propose changes. Colours both boxes and edges that carry the
+  // marker — declared once, no per-element styling.
+  tag proposed {
+    color #f59e0b
+  }
 }
 
 model {
@@ -79,19 +82,30 @@ the boundary is usually right and the code is wrong. Prefer fixing the code —
 route through the permitted module, use the port, move the logic.
 
 If the dependency is genuinely warranted, **propose** it. Add the edge **with
-the marker**:
+the marker** — one token, no styling:
 
 ```likec4
-  domain -> shared {
+  domain -> shared #proposed
+```
+
+If the change also needs a new module, mark that too, so a reviewer sees the new
+box as well as the new arrow:
+
+```likec4
+  module shared 'Shared Kernel' {
     #proposed
-    style {
-      color proposed
-      line dashed
-    }
+    metadata { folder 'src/shared' }
   }
 ```
 
-It renders amber/dashed so a human can see exactly what you are asking for.
+The `proposed` tag colours both, so the reviewer sees exactly what you are asking
+for.
+
+Note the two markers mean different things. On an **edge** it is semantic: the
+edge is excluded from the allow-list until approved. On an **element** it is
+only a signal — the module is enforced from the moment you draw it, which is
+safe, because a new module grants nothing until an edge permits it. **The edge
+is always the only grant.**
 
 **Proposing does not unblock you.** A `#proposed` edge is intent, not
 permission: it is excluded from the allow-list, so `boundry check` still fails

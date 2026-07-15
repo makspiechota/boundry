@@ -1,5 +1,4 @@
 specification {
-  color proposed #f59e0b
   element layer {
     style {
       shape rectangle
@@ -12,7 +11,10 @@ specification {
       color green
     }
   }
-  tag proposed
+  // Colours both boxes and edges carrying the marker, declared once.
+  tag proposed {
+    color #f59e0b
+  }
 }
 
 model {

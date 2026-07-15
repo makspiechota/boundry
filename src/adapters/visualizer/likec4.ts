@@ -8,25 +8,7 @@ interface TextRange {
   end: number;
 }
 
-function findDescendant(node: any, predicate: (n: any) => boolean): any {
-  const seen = new Set<any>();
-  const stack = [node];
-  while (stack.length) {
-    const n = stack.pop();
-    if (!n || typeof n !== 'object' || seen.has(n)) continue;
-    seen.add(n);
-    if (Array.isArray(n)) {
-      stack.push(...n);
-      continue;
-    }
-    if (predicate(n)) return n;
-    for (const key of Object.keys(n)) {
-      if (!key.startsWith('$')) stack.push(n[key]);
-    }
-  }
-  return undefined;
-}
-
+/** A `#proposed` marker in the source — on an element or a relationship alike. */
 function isProposedTag(node: any, text: string): boolean {
   return (
     node.$type === 'TagRef' &&
@@ -36,24 +18,25 @@ function isProposedTag(node: any, text: string): boolean {
 }
 
 /**
- * For a relationship carrying a `#proposed` marker, the range of source to
- * remove: the whole relationship body (the proposal decoration) plus the
- * whitespace before it, or the bare inline tag when there is no body.
+ * The source to remove for one marker. A marker alone on its line takes the
+ * whole line (so approving leaves no blank gap); an inline one takes just the
+ * token and the space before it. The `tag proposed` declaration in the
+ * specification is untouched — the vocabulary stays for the next proposal.
  */
-function proposedRemovalRange(relation: any, text: string): TextRange | undefined {
-  const body = findDescendant(relation, (n) => n.$type === 'RelationBody' && n.$cstNode);
-  if (body) {
-    let start = body.$cstNode.offset;
-    while (start > 0 && /\s/.test(text[start - 1])) start--;
-    return { start, end: body.$cstNode.end };
+function proposedRemovalRange(tag: any, text: string): TextRange {
+  const { offset, end } = tag.$cstNode;
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  const lineEnd = text.indexOf('\n', end);
+  const beforeOnLine = text.slice(lineStart, offset);
+  const afterOnLine = text.slice(end, lineEnd === -1 ? text.length : lineEnd);
+
+  if (beforeOnLine.trim() === '' && afterOnLine.trim() === '') {
+    return { start: lineStart, end: lineEnd === -1 ? end : lineEnd + 1 };
   }
-  const tag = findDescendant(relation, (n) => isProposedTag(n, text));
-  if (tag) {
-    let start = tag.$cstNode.offset;
-    while (start > 0 && (text[start - 1] === ' ' || text[start - 1] === '\t')) start--;
-    return { start, end: tag.$cstNode.end };
-  }
-  return undefined;
+
+  let start = offset;
+  while (start > lineStart && (text[start - 1] === ' ' || text[start - 1] === '\t')) start--;
+  return { start, end };
 }
 
 function collectProposedRanges(root: any, text: string): TextRange[] {
@@ -66,13 +49,8 @@ function collectProposedRanges(root: any, text: string): TextRange[] {
       for (const item of node) walk(item);
       return;
     }
-    if (
-      node.$type === 'Relation' &&
-      node.$cstNode &&
-      findDescendant(node, (n) => isProposedTag(n, text))
-    ) {
-      const range = proposedRemovalRange(node, text);
-      if (range) ranges.push(range);
+    if (isProposedTag(node, text)) {
+      ranges.push(proposedRemovalRange(node, text));
     }
     for (const key of Object.keys(node)) {
       if (!key.startsWith('$')) walk(node[key]);

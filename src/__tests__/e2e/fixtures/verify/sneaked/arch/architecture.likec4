@@ -1,12 +1,12 @@
 specification {
-  color proposed #f59e0b
   element module {
     style {
       shape rectangle
-      color green
     }
   }
-  tag proposed
+  tag proposed {
+    color #f59e0b
+  }
 }
 
 model {
