@@ -1,0 +1,29 @@
+specification {
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module application 'Application' {
+    metadata { folder 'src/application' }
+  }
+  module infrastructure 'Infrastructure' {
+    metadata { folder 'src/infrastructure' }
+  }
+
+  application -> domain
+  infrastructure -> domain
+}
+
+views {
+  view index {
+    include *
+  }
+}

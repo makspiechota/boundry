@@ -34,6 +34,17 @@ export interface BoundaryModel {
    */
   wildcards: string[];
   /**
+   * Regex patterns for files that are analysed but never held to a boundary as
+   * an *importer*. Matched files are dropped from every rule's `from` side, so
+   * they may import anything; they are still governed as import *targets*.
+   *
+   * For test files and ambient `.d.ts` declarations: an integration test wiring
+   * real adapters across layers is doing its job, not breaking the
+   * architecture. From-side only — production importing a test helper stays as
+   * forbidden as it ever was.
+   */
+  exemptImporters: string[];
+  /**
    * Optional code root declared fully governed. Every folder under it is
    * expected to be modelled, so importing territory no module claims is
    * forbidden rather than free. Omitted (the default) = unmapped folders are
@@ -52,6 +63,21 @@ export function unconstrainedModules(model: BoundaryModel): Set<string> {
   return new Set(
     model.allowed.filter((edge) => wildcards.has(edge.to)).map((edge) => edge.from),
   );
+}
+
+/**
+ * Exemption patterns present at `head` but not at `base`.
+ *
+ * An exemption is a grant — it lifts whole files out of every rule — so a new
+ * one has to face the same gate as a new edge. Without this, an agent blocked by
+ * a boundary could add `exemptImporters '/src/'` and walk straight through.
+ */
+export function newlyExemptedImporters(
+  base: BoundaryModel,
+  head: BoundaryModel,
+): string[] {
+  const exemptAtBase = new Set(base.exemptImporters);
+  return head.exemptImporters.filter((pattern) => !exemptAtBase.has(pattern));
 }
 
 const edgeKey = (edge: AllowedEdge): string => `${edge.from} -> ${edge.to}`;

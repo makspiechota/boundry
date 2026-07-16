@@ -8,7 +8,10 @@ import { LikeC4Visualizer } from "../../adapters/visualizer/likec4.js";
 import { DepCruiserEnforcer } from "../../adapters/enforcer/depcruiser.js";
 import type { CheckResult } from "../../core/ports/ports.js";
 import type { AllowedEdge } from "../../core/model/boundary-model.js";
-import { newlyAllowedEdges } from "../../core/model/boundary-model.js";
+import {
+  newlyAllowedEdges,
+  newlyExemptedImporters,
+} from "../../core/model/boundary-model.js";
 
 export interface Given {
   likeC4Path: string;
@@ -150,6 +153,42 @@ export function comparingArchitectures(): (
     const base = await new LikeC4Visualizer(resolve(baseArchPath)).read();
     const head = await new LikeC4Visualizer(resolve(headArchPath)).read();
     return newlyAllowedEdges(base, head);
+  };
+}
+
+/**
+ * The same delta for importer exemptions. An exemption lifts whole files out of
+ * every rule, so a new one is a grant and has to be as visible as a new edge.
+ */
+export function comparingExemptions(): (
+  given: VerifyGiven
+) => Promise<string[]> {
+  return async ({ baseArchPath, headArchPath }) => {
+    const base = await new LikeC4Visualizer(resolve(baseArchPath)).read();
+    const head = await new LikeC4Visualizer(resolve(headArchPath)).read();
+    return newlyExemptedImporters(base, head);
+  };
+}
+
+/** Assertion: no exemption was added behind the base's back. */
+export function noSelfGrantedExemptions(patterns: string[]): void {
+  assert.equal(
+    patterns.length,
+    0,
+    `expected no self-granted exemptions, got: ${patterns.join(", ")}`
+  );
+}
+
+/** Assertion: exactly this exemption was added since base. */
+export function selfGrantedExemption(
+  pattern: string
+): (patterns: string[]) => void {
+  return (patterns) => {
+    assert.deepEqual(
+      patterns,
+      [pattern],
+      `expected only the exemption '${pattern}', got: ${patterns.join(", ")}`
+    );
   };
 }
 

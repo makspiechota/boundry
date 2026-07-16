@@ -6,9 +6,13 @@ import {
   violationCount,
   warnsAbout,
   type Scenario,
-} from "./e2e-framework.js";
+} from "../../e2e-framework.js";
 
-const FIXTURES = "src/__tests__/e2e/fixtures/govern-root";
+// github.com/makspiechota/boundry/issues/1 — brand-new, unmodelled code was free
+// to import, so an agent blocked by a boundary could route around it through a
+// folder nobody had drawn.
+
+const FIXTURES = "src/__tests__/e2e/github-issues/1/fixtures";
 const CODEBASE = `${FIXTURES}/codebase`;
 
 // The codebase imports a drawn edge (a -> b) and also reaches into

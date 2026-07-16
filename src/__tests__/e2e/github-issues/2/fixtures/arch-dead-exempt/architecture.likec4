@@ -1,0 +1,44 @@
+specification {
+  element system {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  system app 'Application' {
+    metadata {
+      // Deliberately wrong: this pattern matches nothing in the codebase, so the
+      // files the author meant to exempt are still policed. An exemption is a
+      // grant, and a grant that does nothing is worth saying out loud.
+      exemptImporters '/__specs__/'
+    }
+  }
+
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module application 'Application layer' {
+    metadata { folder 'src/application' }
+  }
+  module infrastructure 'Infrastructure' {
+    metadata { folder 'src/infrastructure' }
+  }
+
+  application -> domain
+  infrastructure -> domain
+}
+
+views {
+  view index {
+    include *
+  }
+}

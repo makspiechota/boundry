@@ -1,0 +1,44 @@
+specification {
+  element system {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  system app 'Application' {
+    metadata {
+      // Files that are analysed but never held to a boundary as an importer.
+      // Backslashes must be doubled: LikeC4 processes string escapes, so '\.'
+      // would arrive as a bare '.' — a wildcard matching far more than intended.
+      exemptImporters '/__tests__/|\\.d\\.ts$'
+    }
+  }
+
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module application 'Application layer' {
+    metadata { folder 'src/application' }
+  }
+  module infrastructure 'Infrastructure' {
+    metadata { folder 'src/infrastructure' }
+  }
+
+  application -> domain
+  infrastructure -> domain
+}
+
+views {
+  view index {
+    include *
+  }
+}

@@ -65,6 +65,15 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
     );
   }
 
+  // Exemptions apply to the `from` side only: matched files may import freely,
+  // but every module's scope still governs them as a *target*, so importing a
+  // test helper from production stays forbidden.
+  const asImporter = (id: string): PathMatcher => {
+    const scope = scopeOf.get(id)!;
+    if (model.exemptImporters.length === 0) return scope;
+    return { ...scope, pathNot: [...(scope.pathNot ?? []), ...model.exemptImporters] };
+  };
+
   // A module wired to an `#anything` wildcard is deliberately exempt: it is the
   // composition root, whose job is to import everything and wire it together.
   const unconstrained = unconstrainedModules(model);
@@ -79,7 +88,7 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
         name: `boundary:${from.id}->${to.id}`,
         comment: `${from.title} may not depend on ${to.title}`,
         severity: 'error',
-        from: scopeOf.get(from.id)!,
+        from: asImporter(from.id),
         to: scopeOf.get(to.id)!,
       });
     }
@@ -96,7 +105,7 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
         name: `boundary:${from.id}->unmapped`,
         comment: `${from.title} may not depend on code under '${model.governRoot}' that no module claims`,
         severity: 'error',
-        from: scopeOf.get(from.id)!,
+        from: asImporter(from.id),
         to: { path: folderToRegex(model.governRoot), pathNot: claimed },
       });
     }
@@ -159,6 +168,25 @@ module.exports = {
       }
     }
 
+    // An exemption is a grant, so a dead one is worth knowing about: it means
+    // the pattern is wrong (LikeC4 eats backslashes) and files the author meant
+    // to exempt are still being policed — or were never there to begin with.
+    const exemptions = model.exemptImporters.map((pattern) => ({
+      pattern,
+      matches: seen.filter((source) => new RegExp(pattern).test(source)),
+    }));
+    for (const { pattern, matches } of exemptions) {
+      if (matches.length === 0) {
+        warnings.push(`exemption '${pattern}' matched 0 source files`);
+      } else if (matches.length === seen.length) {
+        warnings.push(
+          `exemption '${pattern}' matched every source file — no file can violate a boundary`,
+        );
+      }
+    }
+    const isExempt = (source: string): boolean =>
+      model.exemptImporters.some((pattern) => new RegExp(pattern).test(source));
+
     // The symmetric guard: code under a declared govern root that no module
     // claims. The model not covering the code is as much a gap as the code not
     // backing the model.
@@ -169,6 +197,9 @@ module.exports = {
       for (const source of seen) {
         if (!source.startsWith(rootPrefix)) continue;
         if (claimed.some((prefix) => source.startsWith(prefix))) continue;
+        // Exempt code is deliberately outside the architecture; asking a module
+        // to claim it would defeat the point of exempting it.
+        if (isExempt(source)) continue;
         unclaimed.add(source.slice(0, source.lastIndexOf('/')));
       }
       for (const dir of unclaimed) {

@@ -51,6 +51,35 @@ A mapped folder claims its **entire subtree**, so the abstraction level stays
 yours: one box on `src/domain` covers everything beneath it. You add finer boxes
 where you want finer *rules*, not to satisfy the coverage check.
 
+### Exempting test files and ambient declarations
+
+Every file under a mapped folder is governed as a rule *source* by default —
+including tests. An integration test that wires a real database adapter across a
+layer boundary is doing its job, not breaking the architecture. Exempt them:
+
+```likec4
+system app 'App' {
+  metadata {
+    exemptImporters '/__tests__/|\\.d\\.ts$'
+  }
+}
+```
+
+Matched files are still analysed, but they are dropped from every rule's `from`
+side, so they may import anything. This is **from-side only** — they stay
+governed as import *targets*, so production reaching into a test helper is as
+forbidden as it ever was. Patterns are regexes, union across every element that
+declares one, and change nothing unless you declare one.
+
+> **Double your backslashes.** LikeC4 processes string escapes, so `'\.d\.ts$'`
+> arrives as `.d.ts$`, where `.` is a wildcard that matches far more than you
+> meant. Write `'\\.d\\.ts$'`. Boundry warns when an exemption matches **zero**
+> files, or when one matches **every** file, since both mean the pattern is
+> wrong.
+
+An exemption is a grant — it lifts whole files out of every rule — so `verify`
+reports one added since the approved base, exactly like an undrawn edge.
+
 ### The composition root — `#anything`
 
 Every repo has one place that legitimately imports everything: the entry point

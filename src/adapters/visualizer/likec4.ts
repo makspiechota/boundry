@@ -8,6 +8,34 @@ interface TextRange {
   end: number;
 }
 
+/**
+ * An exemption pattern has to be a usable regex before it reaches the linter. A
+ * broken or empty one would otherwise be a silent hole: it exempts files from
+ * every rule, so failing to compile it must be loud, never shrugged off.
+ *
+ * Note LikeC4 string literals process escapes, so `'\.d\.ts$'` arrives here as
+ * `.d.ts$` — a regex where `.` is a wildcard. Patterns must be written
+ * `'\\.d\\.ts$'` in the diagram. That silent widening is why an exemption that
+ * matches nothing is reported at check time.
+ */
+function assertUsableRegex(pattern: string, elementId: string): string {
+  if (pattern.trim() === '') {
+    throw new Error(
+      `element '${elementId}' declares an empty exemption pattern, which would exempt every file`,
+    );
+  }
+  try {
+    new RegExp(pattern);
+  } catch (cause) {
+    throw new Error(
+      `element '${elementId}' declares an exemption pattern that is not a valid regex: ` +
+        `'${pattern}' (${(cause as Error).message}). Remember LikeC4 eats backslashes — ` +
+        'write \\\\. to mean a literal dot.',
+    );
+  }
+  return pattern;
+}
+
 /** A `#proposed` marker in the source — on an element or a relationship alike. */
 function isProposedTag(node: any, text: string): boolean {
   return (
@@ -76,8 +104,17 @@ export class LikeC4Visualizer implements VisualizerPort {
     const modules: Module[] = [];
     const folderIds = new Set<string>();
     const wildcardIds = new Set<string>();
+    const exemptImporters = new Set<string>();
     let governRoot: string | undefined;
     for (const el of model.elements()) {
+      // Any element may exempt importers; the patterns union across the
+      // diagram. LikeC4 forbids a repeated metadata key, so several patterns
+      // means either a `|` alternation or one per element.
+      const exemptMeta = el.getMetadata('exemptImporters');
+      for (const raw of Array.isArray(exemptMeta) ? exemptMeta : exemptMeta ? [exemptMeta] : []) {
+        exemptImporters.add(assertUsableRegex(raw, String(el.id)));
+      }
+
       // Opt-in: any element may declare the code root as fully governed. It
       // needs no `folder` of its own — it is a declaration, not a module.
       const rootMeta = el.getMetadata('governRoot');
@@ -116,7 +153,13 @@ export class LikeC4Visualizer implements VisualizerPort {
       }
     }
 
-    return { modules, allowed, governRoot, wildcards: [...wildcardIds] };
+    return {
+      modules,
+      allowed,
+      governRoot,
+      wildcards: [...wildcardIds],
+      exemptImporters: [...exemptImporters],
+    };
   }
 
   /**

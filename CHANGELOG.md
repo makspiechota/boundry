@@ -28,7 +28,7 @@ ability to grant itself dependencies.
   proposal. Because proposals are excluded from the allow-list, the set of
   newly-allowed edges is exactly the set of self-approvals. `approve --base` uses
   the same gate, so it refuses to launder a self-granted edge.
-- **`governRoot` (opt-in)** — `metadata { governRoot 'src' }` declares a code
+- **`governRoot` (opt-in)** ([#1]) — `metadata { governRoot 'src' }` declares a code
   root fully governed: importing territory under it that no module claims is a
   violation rather than free, and `check` warns about code no module covers. The
   mirror of the zero-files warning. Without it, unmapped folders stay ignored, so
@@ -43,6 +43,19 @@ ability to grant itself dependencies.
     govern root was to leave it *unmapped* — granting the same power by
     **omission**, with nothing drawn for a reviewer to see.
   - The exemption belongs to the wired module alone and does not leak.
+- **`exemptImporters`** ([#2]) — `metadata { exemptImporters '/__tests__/|\\.d\\.ts$' }`
+  drops matched files from every rule's `from` side: they are analysed, but never
+  held to a boundary as an importer. For test files that legitimately wire real
+  adapters across layers, and for ambient `.d.ts` declarations.
+  - **From-side only.** Exempt files stay governed as import *targets*, so
+    production importing a test helper is still a violation.
+  - Patterns are regexes and union across every element that declares one.
+    LikeC4 has no repeated metadata keys, so use a `|` alternation or one per
+    element. **Backslashes must be doubled** — LikeC4 processes string escapes,
+    so `'\.d\.ts$'` arrives as `.d.ts$` and over-matches silently.
+  - `check` warns when an exemption matches **zero** files or **every** file;
+    both mean the pattern is wrong. An invalid or empty pattern is a hard error.
+  - `verify` reports an exemption added since the base, like any other grant.
 - **Skill for coding agents** — `.claude/skills/define-architecture-boundaries`
   documents the annotations and the proposal protocol, including the things an
   agent must never do: add a bare edge, strip a marker, run `approve`, draw a
@@ -57,6 +70,15 @@ ability to grant itself dependencies.
 - **A check that analysed zero files reported success.** `check` now throws when
   dependency-cruiser sees no sources — the setup being broken is a failure, not a
   clean run. This is the guard that caught the 0.1.0 packaging bug below.
+
+### Changed
+
+- **`Pipeline.verify()` returns `VerifyResult`** (`{ edges, exemptions }`) rather
+  than a bare edge array, so both kinds of grant surface. SDK-breaking; the CLI
+  is unaffected.
+
+[#1]: https://github.com/makspiechota/boundry/issues/1
+[#2]: https://github.com/makspiechota/boundry/issues/2
 
 ## [0.1.1] — never released
 

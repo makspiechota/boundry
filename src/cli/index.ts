@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
-import { Pipeline } from '../core/pipeline/pipeline.js';
+import { Pipeline, type VerifyResult } from '../core/pipeline/pipeline.js';
 import { LikeC4Visualizer } from '../adapters/visualizer/likec4.js';
 import { DepCruiserEnforcer } from '../adapters/enforcer/depcruiser.js';
 
@@ -51,9 +51,21 @@ function materializeArchAt(archDir: string, ref: string): string {
   return workDir;
 }
 
-function listGrantedEdges(granted: { from: string; to: string }[]): void {
-  for (const edge of granted) console.error(`  ${edge.from} → ${edge.to}`);
-  console.error('  Mark them #proposed so the grant is an explicit, reviewable act.');
+function countGrants(granted: VerifyResult): number {
+  return granted.edges.length + granted.exemptions.length;
+}
+
+function listGrants(granted: VerifyResult): void {
+  for (const edge of granted.edges) console.error(`  ${edge.from} → ${edge.to}`);
+  for (const pattern of granted.exemptions) {
+    console.error(`  exemption '${pattern}' — lifts matching files out of every rule`);
+  }
+  if (granted.edges.length > 0) {
+    console.error('  Mark them #proposed so the grant is an explicit, reviewable act.');
+  }
+  if (granted.exemptions.length > 0) {
+    console.error('  An exemption cannot be proposed — a human adds it to the diagram, or not at all.');
+  }
 }
 
 async function main(): Promise<void> {
@@ -108,14 +120,14 @@ async function main(): Promise<void> {
       return;
     }
     const granted = await grantedSince(baseRef);
-    if (granted.length === 0) {
-      console.log(`Boundry: ✓ no edges granted without a #proposed marker (vs ${baseRef})`);
+    if (countGrants(granted) === 0) {
+      console.log(`Boundry: ✓ nothing granted without a #proposed marker (vs ${baseRef})`);
       return;
     }
     console.error(
-      `Boundry: ✗ ${granted.length} edge(s) granted without a #proposed marker (vs ${baseRef})`,
+      `Boundry: ✗ ${countGrants(granted)} grant(s) made without a #proposed marker (vs ${baseRef})`,
     );
-    listGrantedEdges(granted);
+    listGrants(granted);
     process.exitCode = 1;
     return;
   }
@@ -124,11 +136,11 @@ async function main(): Promise<void> {
     // Approving must never launder an edge that skipped the proposal protocol.
     if (baseRef) {
       const granted = await grantedSince(baseRef);
-      if (granted.length > 0) {
+      if (countGrants(granted) > 0) {
         console.error(
-          `Boundry: ✗ refusing to approve — ${granted.length} edge(s) were granted without a #proposed marker (vs ${baseRef})`,
+          `Boundry: ✗ refusing to approve — ${countGrants(granted)} grant(s) were made without a #proposed marker (vs ${baseRef})`,
         );
-        listGrantedEdges(granted);
+        listGrants(granted);
         process.exitCode = 1;
         return;
       }

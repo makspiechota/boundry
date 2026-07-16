@@ -35,6 +35,11 @@ not draw is forbidden.
   top element. Then the whole tree is governed: importing anything under the
   root that no module claims is a **violation**, and `check` warns about code no
   module covers. Without it, unmapped folders are ignored (the default).
+- **Files may be exempt as importers.** `metadata { exemptImporters '<regex>' }`
+  drops matched files from every rule's `from` side — for test files that wire
+  real adapters across layers, and ambient `.d.ts` declarations. From-side only:
+  they stay governed as import *targets*. Backslashes must be doubled (`'\\.d\\.ts$'`)
+  because LikeC4 processes string escapes.
 - **A wildcard exempts one module, not the diagram.** Only the source of the
   `-> anything` edge goes unconstrained; every other module is governed exactly
   as before. Nothing may import a wildcard's *source* more freely either.
@@ -157,6 +162,11 @@ the proposal is awaiting approval, and stop there.
 - **Never run `boundry approve`.** That command is the human's.
 - **Never widen an edge to dodge a violation** (e.g. mapping a coarser folder,
   or deleting a module so its rules vanish).
+- **Never add or widen an `exemptImporters` pattern.** It lifts whole files out
+  of every rule, so it is a grant — and unlike an edge, it cannot be proposed. A
+  human adds it to the diagram or nobody does. Widening one to swallow the file
+  you're blocked on is the bypass wearing a lab coat; `boundry verify` reports it
+  as a self-grant.
 - **Never draw an `#anything` wildcard, and never add an edge into an existing
   one.** It switches enforcement off for the module it touches, which is the
   largest grant in the language. A repo needs one, for the composition root, and
@@ -177,6 +187,7 @@ the proposal is awaiting approval, and stop there.
 - [ ] No edge exists that you do not actually want to permit.
 - [ ] Every edge you added in this change carries `#proposed`.
 - [ ] You added no `#anything` box and no edge into one.
+- [ ] You added or widened no `exemptImporters` pattern.
 
 ## Running it
 
