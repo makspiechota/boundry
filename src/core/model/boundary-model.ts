@@ -23,12 +23,35 @@ export interface BoundaryModel {
   modules: Module[];
   allowed: AllowedEdge[];
   /**
+   * Ids of wildcard elements — diagram boxes tagged `#anything`. They map to no
+   * folder and are not modules; they stand for "the rest of the code". A module
+   * with an allowed edge to one is exempt from every boundary rule.
+   *
+   * This is the explicit way to say "deliberately unconstrained", for the
+   * composition root that must wire everything together. It is a drawn,
+   * reviewable grant — unlike opting out by staying unmapped, where the mere
+   * ABSENCE of a box would hand out the same power silently.
+   */
+  wildcards: string[];
+  /**
    * Optional code root declared fully governed. Every folder under it is
    * expected to be modelled, so importing territory no module claims is
    * forbidden rather than free. Omitted (the default) = unmapped folders are
    * ignored, which keeps a communication diagram usable as an enforcement one.
    */
   governRoot?: string;
+}
+
+/**
+ * Modules holding an approved edge to a wildcard element, i.e. free to import
+ * anything. A `#proposed` edge to a wildcard is excluded from `allowed` like any
+ * other proposal, so the exemption only takes effect once a human approves it.
+ */
+export function unconstrainedModules(model: BoundaryModel): Set<string> {
+  const wildcards = new Set(model.wildcards);
+  return new Set(
+    model.allowed.filter((edge) => wildcards.has(edge.to)).map((edge) => edge.from),
+  );
 }
 
 const edgeKey = (edge: AllowedEdge): string => `${edge.from} -> ${edge.to}`;

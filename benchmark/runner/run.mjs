@@ -1,21 +1,34 @@
 #!/usr/bin/env node
 /**
- * A/B run orchestration.
+ * A/B/C run orchestration.
  *
- * Per spec, runs the same agent twice from the same pinned baseline:
- *   control    — the repo as it is. No diagram, no gate.
- *   treatment  — same repo, same prompt, plus the drawn architecture and a
- *                Boundry Stop-hook gate that blocks the turn while violations
- *                remain (see boundry-gate.mjs).
+ * Per spec, runs the same agent from the same pinned baseline under three arms:
  *
- * The arms differ in exactly one thing: whether Boundry is in the loop. The
- * prompt, the model, the baseline commit and the spec are byte-identical.
+ *   no-diagram    — the repo as it is. The agent has CLAUDE.md's conventions
+ *                   and nothing else. Establishes the natural drift rate.
+ *   diagram-only  — the architecture diagram is in the repo and the agent is
+ *                   told to follow it. No gate. This is the rival hypothesis —
+ *                   "just document the architecture" — and it is deliberately
+ *                   the strongest version of it, so a Boundry win is not a
+ *                   straw man.
+ *   boundry       — same diagram, plus the Stop-hook gate that blocks the turn
+ *                   while violations remain (see boundry-gate.mjs).
+ *
+ * Successive arms add exactly one variable: knowledge of the architecture, then
+ * enforcement of it. Prompt, model, baseline commit, spec and tool allowlist are
+ * identical throughout.
+ *
+ * Note the `boundry` arm is clean largely *by construction* — the gate will not
+ * let it stop otherwise. The load-bearing evidence is therefore the drift rate
+ * of the two unenforced arms, plus this arm's convergence and collateral cost.
+ * See ANALYSIS.md.
  *
  * Usage:
- *   node benchmark/runner/run.mjs --spec 01-order-history --arm both [--model opus]
+ *   node benchmark/runner/run.mjs --spec 01-order-history --arm all [--model opus]
  *                                 [--runs 1] [--keep] [--budget 5]
  */
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
@@ -33,8 +46,12 @@ const opt = (flag, fallback) => {
 };
 const has = (flag) => args.includes(flag);
 
+const ARMS = ['no-diagram', 'diagram-only', 'boundry'];
+/** Arms that see the diagram at all. */
+const ARMS_WITH_DIAGRAM = new Set(['diagram-only', 'boundry']);
+
 const specId = opt('--spec', '01-order-history');
-const arm = opt('--arm', 'both');
+const arm = opt('--arm', 'all');
 const model = opt('--model', 'opus');
 const runs = Number(opt('--runs', '1'));
 const budget = opt('--budget', '5');
@@ -69,23 +86,38 @@ function buildPrompt() {
 }
 
 /**
- * Treatment-only. Boundry's real-world affordance: the diagram is in the repo
- * and the agent is told the gate exists. Appended to the system prompt so the
- * user-facing task text stays byte-identical across arms.
+ * What each arm is told about the architecture. Appended to the system prompt so
+ * the task text itself stays byte-identical across arms.
+ *
+ * The two diagram arms share an identical description of the architecture and an
+ * identical instruction to obey it. They differ only in whether that instruction
+ * is *enforced*. Keeping the shared paragraphs literally shared, rather than
+ * paraphrased, is what makes the diagram-only vs boundry comparison a clean test
+ * of enforcement instead of an accidental test of wording.
  */
-function treatmentSystemAppend(worktree) {
+function architectureBriefing(armName, worktree) {
+  if (!ARMS_WITH_DIAGRAM.has(armName)) return null;
+
+  const shared = [
+    "This repository's architecture is drawn as a LikeC4 diagram at arch/promo-shop.likec4.",
+    '',
+    'Every relationship drawn in that diagram is an ALLOWED dependency between the folders',
+    'the elements map to. Any import that crosses a boundary the diagram does not draw is a',
+    'violation of the intended architecture. Read the diagram before you design your change,',
+    'and keep your implementation inside it.',
+    '',
+    'The diagram is the specification. Do not edit it to make your code fit.',
+  ];
+
+  if (armName === 'diagram-only') return shared.join('\n');
+
   return [
-    "This repository's architecture is drawn as a LikeC4 diagram at arch/promo-shop.likec4,",
-    'and it is enforced by Boundry as a hard gate — not a guideline.',
+    ...shared,
     '',
-    'Every relationship drawn in that diagram is an ALLOWED dependency between folders.',
-    'Any import that crosses a boundary the diagram does not draw is a build failure.',
-    'Read the diagram before you design your change.',
-    '',
-    'Check your work at any time with:',
+    'This architecture is enforced by Boundry as a hard gate, not a guideline: an import that',
+    'crosses a boundary the diagram does not draw is a build failure. Check your work at any',
+    'time with:',
     `  npx tsx ${join(BOUNDRY_HOME, 'src/cli/index.ts')} check --arch ${join(worktree, 'arch')} --cwd ${join(worktree, baseline.checkCwd)} src`,
-    '',
-    'The diagram is the specification. Do not edit it to make your code pass.',
   ].join('\n');
 }
 
@@ -105,7 +137,7 @@ function setupWorktree(dir) {
 }
 
 function armSettings(armName, dir, outDir) {
-  if (armName !== 'treatment') return null;
+  if (armName !== 'boundry') return null;
   const settings = {
     hooks: {
       Stop: [
@@ -130,7 +162,7 @@ function runArm(armName, runIndex) {
   console.log(`\n=== ${runId} ===`);
   setupWorktree(worktree);
 
-  if (armName === 'treatment') {
+  if (ARMS_WITH_DIAGRAM.has(armName)) {
     // The diagram ships with the repo the agent sees, as it would in real use.
     cpSync(ARCH, join(worktree, 'arch'), { recursive: true });
   }
@@ -155,7 +187,9 @@ function runArm(armName, runIndex) {
     '--disallowedTools', 'WebFetch', 'WebSearch', 'Task',
   ];
   if (settingsPath) cmd.push('--settings', settingsPath);
-  if (armName === 'treatment') cmd.push('--append-system-prompt', treatmentSystemAppend(worktree));
+  const briefing = architectureBriefing(armName, worktree);
+  if (briefing) cmd.push('--append-system-prompt', briefing);
+  if (briefing) writeFileSync(join(outDir, 'system-append.txt'), briefing);
   cmd.push(buildPrompt());
 
   const started = Date.now();
@@ -211,10 +245,30 @@ function runArm(armName, runIndex) {
   }
   writeFileSync(join(outDir, 'tests.txt'), testOut);
 
+  // The task text must be byte-identical across arms; record its hash so that
+  // is verifiable from the results alone rather than taken on trust.
+  const promptSha = createHash('sha256').update(buildPrompt()).digest('hex');
+
+  // Cost and turn count are findings, not bookkeeping: the gate buys compliance
+  // by making the agent work longer, and the report has to price that.
+  let cost = null;
+  let turns = null;
+  try {
+    const parsed = JSON.parse(agentOut);
+    cost = parsed.total_cost_usd ?? null;
+    turns = parsed.num_turns ?? null;
+  } catch {
+    // Budget exhaustion or a crash can leave non-JSON on stdout; the run still
+    // gets measured, it just has no cost line.
+  }
+
   writeFileSync(
     join(outDir, 'run.json'),
     JSON.stringify(
-      { runId, spec: specId, arm: armName, model, baseline: baseline.sha, wallMs, agentFailed: failed, testsPass },
+      {
+        runId, spec: specId, arm: armName, model, baseline: baseline.sha,
+        promptSha, wallMs, agentFailed: failed, testsPass, cost, turns,
+      },
       null,
       2,
     ),
@@ -224,7 +278,13 @@ function runArm(armName, runIndex) {
   return { outDir, worktree };
 }
 
-const armsToRun = arm === 'both' ? ['control', 'treatment'] : [arm];
+const armsToRun = arm === 'all' ? ARMS : arm.split(',');
+for (const a of armsToRun) {
+  if (!ARMS.includes(a)) {
+    console.error(`Unknown arm "${a}". Expected one of: ${ARMS.join(', ')} (or "all").`);
+    process.exit(2);
+  }
+}
 const produced = [];
 for (let i = 1; i <= runs; i++) {
   for (const a of armsToRun) produced.push(runArm(a, i));

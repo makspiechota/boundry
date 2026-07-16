@@ -75,6 +75,7 @@ export class LikeC4Visualizer implements VisualizerPort {
 
     const modules: Module[] = [];
     const folderIds = new Set<string>();
+    const wildcardIds = new Set<string>();
     let governRoot: string | undefined;
     for (const el of model.elements()) {
       // Opt-in: any element may declare the code root as fully governed. It
@@ -82,6 +83,14 @@ export class LikeC4Visualizer implements VisualizerPort {
       const rootMeta = el.getMetadata('governRoot');
       const declaredRoot = Array.isArray(rootMeta) ? rootMeta[0] : rootMeta;
       if (declaredRoot && !governRoot) governRoot = declaredRoot;
+
+      // A box tagged `#anything` is a wildcard, not a module: it maps to no
+      // folder and stands for the rest of the code. An edge into it exempts the
+      // source from every rule.
+      if (el.tags.some((tag) => String(tag) === 'anything')) {
+        wildcardIds.add(String(el.id));
+        continue;
+      }
 
       const meta = el.getMetadata('folder');
       const folder = Array.isArray(meta) ? meta[0] : meta;
@@ -99,12 +108,15 @@ export class LikeC4Visualizer implements VisualizerPort {
       if (rel.tags.some((tag) => String(tag) === 'proposed')) continue;
       const from = String(rel.source.id);
       const to = String(rel.target.id);
-      if (from !== to && folderIds.has(from) && folderIds.has(to)) {
+      // An edge into a wildcard is kept like any other grant, so `verify` sees a
+      // self-granted `#anything` exemption as the newly-allowed edge it is.
+      const targetGoverned = folderIds.has(to) || wildcardIds.has(to);
+      if (from !== to && folderIds.has(from) && targetGoverned) {
         allowed.push({ from, to });
       }
     }
 
-    return { modules, allowed, governRoot };
+    return { modules, allowed, governRoot, wildcards: [...wildcardIds] };
   }
 
   /**

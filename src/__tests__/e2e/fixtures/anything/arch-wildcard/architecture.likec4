@@ -1,0 +1,57 @@
+specification {
+  element system {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+  element wildcard {
+    style {
+      shape rectangle
+    }
+  }
+  // Colours every box and edge carrying the marker, declared once.
+  tag anything {
+    color #64748b
+  }
+}
+
+model {
+  system app 'Application' {
+    metadata { governRoot 'src' }
+  }
+
+  // Owns 'src' minus every mapped descendant — i.e. the loose files at the
+  // root, index.ts among them.
+  module entry 'Composition root' {
+    metadata { folder 'src' }
+  }
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module infra 'Infrastructure' {
+    metadata { folder 'src/infra' }
+  }
+
+  wildcard anything 'Anything' {
+    #anything
+  }
+
+  infra -> domain
+
+  // The composition root's job is to import everything and wire it together.
+  // Drawn, so the exemption is reviewable rather than assumed.
+  entry -> anything
+}
+
+views {
+  view index {
+    include *
+  }
+}

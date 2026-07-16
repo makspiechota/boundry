@@ -1,6 +1,6 @@
 import * as dependencyCruiser from 'dependency-cruiser';
 import type { EnforcerPort, EnforcerConfig, CheckResult, Violation } from '../../core/ports/ports.js';
-import type { BoundaryModel } from '../../core/model/boundary-model.js';
+import { unconstrainedModules, type BoundaryModel } from '../../core/model/boundary-model.js';
 
 // dependency-cruiser ships CommonJS; reach `cruise` through either interop shape.
 const cruise: (
@@ -65,8 +65,13 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
     );
   }
 
+  // A module wired to an `#anything` wildcard is deliberately exempt: it is the
+  // composition root, whose job is to import everything and wire it together.
+  const unconstrained = unconstrainedModules(model);
+
   const rules: ForbiddenRule[] = [];
   for (const from of model.modules) {
+    if (unconstrained.has(from.id)) continue;
     const allowed = allowedTargets.get(from.id)!;
     for (const to of model.modules) {
       if (allowed.has(to.id)) continue; // self or an explicitly allowed edge
@@ -86,6 +91,7 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
   if (model.governRoot) {
     const claimed = model.modules.map((m) => folderToRegex(m.folder));
     for (const from of model.modules) {
+      if (unconstrained.has(from.id)) continue;
       rules.push({
         name: `boundary:${from.id}->unmapped`,
         comment: `${from.title} may not depend on code under '${model.governRoot}' that no module claims`,

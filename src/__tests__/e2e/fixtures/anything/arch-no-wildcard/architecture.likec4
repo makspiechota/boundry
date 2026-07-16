@@ -1,0 +1,38 @@
+specification {
+  element system {
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+  element module {
+    style {
+      shape rectangle
+      color green
+    }
+  }
+}
+
+model {
+  system app 'Application' {
+    metadata { governRoot 'src' }
+  }
+
+  module entry 'Composition root' {
+    metadata { folder 'src' }
+  }
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module infra 'Infrastructure' {
+    metadata { folder 'src/infra' }
+  }
+
+  infra -> domain
+}
+
+views {
+  view index {
+    include *
+  }
+}

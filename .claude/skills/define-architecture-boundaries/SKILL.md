@@ -19,6 +19,11 @@ not draw is forbidden.
 2. **A relationship `a -> b`** declares that `a` may depend on `b`. It is a
    directional allow-list. `a -> b` does **not** permit `b -> a`.
 
+3. **`#anything`** on an element makes it a *wildcard*: a box that maps to no
+   folder and stands for "the rest of the code". A module with an edge into it
+   is exempt from every rule. This exists for the composition root, which must
+   import everything to wire it together. See below — you do not add these.
+
 ## Rules Boundry applies
 
 - A module may import its own folder and any folder it has an edge to. Every
@@ -30,6 +35,9 @@ not draw is forbidden.
   top element. Then the whole tree is governed: importing anything under the
   root that no module claims is a **violation**, and `check` warns about code no
   module covers. Without it, unmapped folders are ignored (the default).
+- **A wildcard exempts one module, not the diagram.** Only the source of the
+  `-> anything` edge goes unconstrained; every other module is governed exactly
+  as before. Nothing may import a wildcard's *source* more freely either.
 - **Nesting is supported.** You may map a parent folder *and* its children. A
   module owns its folder minus its mapped children, so a parent's edges govern
   only the parent's own files — **a child never inherits them** and must be
@@ -47,6 +55,10 @@ specification {
   // marker — declared once, no per-element styling.
   tag proposed {
     color #f59e0b
+  }
+  // Marks a wildcard box. Reserved for the composition root.
+  tag anything {
+    color #64748b
   }
 }
 
@@ -74,6 +86,28 @@ views {
 
 `domain` may depend on nothing but itself; `infra` and `api` may depend on
 `domain`. So `domain -> infra` fails the check, while `infra -> domain` passes.
+
+## The composition root
+
+A repo has one place that legitimately imports everything: the entry point that
+constructs the object graph. Give it a module and wire it to a wildcard:
+
+```likec4
+  // Owns 'src' minus every mapped descendant — the loose files at the root.
+  module entry 'Composition root' {
+    metadata { folder 'src' }
+  }
+  element anything 'Anything' {
+    #anything
+  }
+
+  entry -> anything
+```
+
+Under a `governRoot` this is what keeps `src/index.ts` legal without leaving it
+unmapped. That distinction is the whole point: an unmapped folder would get the
+same freedom by *omission* — nothing drawn, nothing to review. The wildcard makes
+the exemption a visible, coloured box someone approved on purpose.
 
 ## Proposing a change — read this before touching the diagram
 
@@ -123,6 +157,12 @@ the proposal is awaiting approval, and stop there.
 - **Never run `boundry approve`.** That command is the human's.
 - **Never widen an edge to dodge a violation** (e.g. mapping a coarser folder,
   or deleting a module so its rules vanish).
+- **Never draw an `#anything` wildcard, and never add an edge into an existing
+  one.** It switches enforcement off for the module it touches, which is the
+  largest grant in the language. A repo needs one, for the composition root, and
+  a human decides that. If you believe your module needs it, propose the specific
+  edge you actually want instead — `boundry verify` reports a wildcard edge as
+  self-approved like any other.
 - **Never route around a boundary through a new folder.** Creating
   `src/shared-utils/` and importing it, so the blocked dependency travels via
   unmodelled code, is the same bypass wearing a disguise. Where a `governRoot`
@@ -136,6 +176,7 @@ the proposal is awaiting approval, and stop there.
 - [ ] Every legitimate cross-folder import is drawn, in the right direction.
 - [ ] No edge exists that you do not actually want to permit.
 - [ ] Every edge you added in this change carries `#proposed`.
+- [ ] You added no `#anything` box and no edge into one.
 
 ## Running it
 

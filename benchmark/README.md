@@ -4,15 +4,27 @@ A controlled experiment measuring whether Boundry keeps agent-written code insid
 the drawn architecture.
 
 The same agent implements the same spec against the same repo, from the same
-commit, twice:
+commit, under three arms:
 
 | Arm | What it gets |
 | --- | --- |
-| **control** | The repo as it is. No diagram, no gate. |
-| **treatment** | Same repo, same prompt — plus the drawn architecture and a Boundry gate that blocks the agent's turn while violations remain. |
+| **no-diagram** | The repo as it is — CLAUDE.md's conventions and nothing else. The natural drift rate. |
+| **diagram-only** | The architecture diagram is in the repo and the agent is told to follow it. No gate. |
+| **boundry** | Same diagram, plus a Boundry gate that blocks the agent's turn while violations remain. |
 
-The arms differ in exactly one variable: whether Boundry is in the loop. Same
-model, same baseline commit, same task text, same tool allowlist.
+Each arm adds exactly one variable to the one before: first knowledge of the
+architecture, then enforcement of it. Same model, same baseline commit, same task
+text, same tool allowlist throughout.
+
+`diagram-only` is the arm that earns the study. It is the rival hypothesis —
+*just write the architecture down* — and without it, a Boundry win cannot be told
+apart from "telling the agent about the architecture works."
+
+**The `boundry` arm is clean by construction** — the gate will not let it stop
+otherwise — so its cleanliness is not the finding. The load-bearing evidence is
+the drift rate of the two *unenforced* arms, plus whether the gate converges
+without breaking the feature or being evaded. [`ANALYSIS.md`](./ANALYSIS.md) is
+the pre-registered plan and explains what these numbers can and cannot support.
 
 ## Why this design
 
@@ -65,13 +77,17 @@ target if the baseline already violates it.
 ## Running
 
 ```bash
-node benchmark/runner/run.mjs --spec 01-order-history --arm both --model opus
+# one run of each arm — a smoke test of the design, not a result
+node benchmark/runner/run.mjs --spec 01-order-history --arm all --model opus
+
+# then read the comparison
+node benchmark/metrics/aggregate.mjs --spec 01-order-history
 ```
 
 | Flag | Meaning |
 | --- | --- |
 | `--spec <id>` | Spec to run (default `01-order-history`). |
-| `--arm control\|treatment\|both` | Which arm(s). Default `both`. |
+| `--arm all\|<name>[,<name>]` | Which arm(s): `no-diagram`, `diagram-only`, `boundry`. Default `all`. |
 | `--model <alias>` | Model under test. Default `opus`. |
 | `--runs <n>` | Repetitions per arm — agents are stochastic; n=1 is an anecdote. |
 | `--budget <usd>` | Per-run spend cap. |
@@ -88,13 +104,15 @@ Counted, never judged. No model calls (`metrics/measure.mjs`):
 
 | Metric | Meaning |
 | --- | --- |
+| `cleanAndWorking` | **Primary endpoint.** Zero violations *and* tests pass. Either half alone is gameable. |
 | `violationCount` | Imports crossing a boundary the diagram does not draw. |
 | `forbiddenEdges` | The distinct architectural edges introduced, e.g. `domain.checkout->domain.catalog`. |
 | `traps[].taken` | Which of the spec's engineered traps this run fell into. |
-| `testsPass` | Whether the agent's own feature actually works — drift only counts if it does. |
+| `gate.blocked` / `gate.converged` | `boundry` arm: how many times Boundry pushed back, and whether the agent ever got clean. |
 | `diagramTampering` | Whether the agent edited the diagram it was being held to. |
-| `gate.blocked` | Treatment only: how many times Boundry pushed the agent back. |
-| `diff` | Files changed and lines added/removed. |
+| `existingTests.anyTouched` | Whether baseline tests were modified or deleted to make things pass. |
+| `evasion` | Dynamic `import()`/`require()`/`@ts-expect-error` added — routes around a static-import linter. |
+| `cost`, `turns` | What each arm spent. The gate buys compliance with extra work; that price is a finding. |
 
 Measurement always uses the **canonical** diagram from this directory, never the
 copy in the worktree — otherwise an agent that edited the diagram would be graded
@@ -102,11 +120,12 @@ against its own edit.
 
 ## Reading a result
 
-The headline comparison is `traps[].taken` and `forbiddenEdges` between arms, on
-runs where `testsPass` is true. A treatment run with `gate.blocked > 0` and a
-clean final state is the core claim in miniature: the agent *did* reach for the
-shortcut, and the gate turned it back.
+`aggregate.mjs` prints the primary endpoint per arm with Wilson 95% intervals,
+trap-by-trap breakdowns, the integrity checks, and pairwise Fisher exact tests.
 
-Caveats worth keeping honest: n=1 proves nothing (agents are stochastic — use
-`--runs`), and a treatment agent also *sees* the diagram, so the arms differ by
-"Boundry in the loop", not by the gate alone.
+The comparison that carries the argument is **`diagram-only` vs `boundry`**:
+documenting versus enforcing. `no-diagram` establishes that drift exists at all.
+
+Read [`ANALYSIS.md`](./ANALYSIS.md) before quoting any number from this
+directory. In particular: n=1 is an anecdote (n≥10/arm is the floor for a claim),
+and a clean `boundry` arm is expected by construction rather than evidence.
