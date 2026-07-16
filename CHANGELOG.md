@@ -11,6 +11,16 @@ model" promise hold for deep, nested C4 trees.
 
 ### Added
 
+- **Accepted-state lock + `annotate` (prototype).** `approve` now records the
+  accepted model to `boundry.lock` beside the diagram — a baseline Boundry
+  **owns**, rather than inferring it from whatever git happens to hold, so
+  "approved" is decoupled from "committed". `boundry annotate` diffs the diagram
+  against that lock and rewrites every undeclared addition — a bare new edge (a
+  self-grant) or box — into an explicit `#proposed` proposal in the source,
+  deterministically and idempotently. Turns silent drift into a reviewable,
+  colourable proposal. (Additive only; deletions are reported, not round-tripped
+  back into the DSL — re-materialising a removed box would resurrect it as an
+  enforced module.)
 - **`#proposal-delete` — the deletion half of the approval lifecycle.** Tag an
   edge or a box `#proposal-delete` to propose retiring it. The marker colours it
   red; a pending deletion changes nothing (the edge stays allowed, the box stays

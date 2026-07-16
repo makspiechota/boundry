@@ -1,0 +1,30 @@
+{
+  "modules": [
+    {
+      "id": "api",
+      "title": "API",
+      "path": "src/api",
+      "kind": "folder"
+    },
+    {
+      "id": "domain",
+      "title": "Domain",
+      "path": "src/domain",
+      "kind": "folder"
+    },
+    {
+      "id": "legacy",
+      "title": "Legacy",
+      "path": "src/legacy",
+      "kind": "folder"
+    }
+  ],
+  "allowed": [
+    {
+      "from": "api",
+      "to": "domain"
+    }
+  ],
+  "wildcards": [],
+  "exemptImporters": []
+}

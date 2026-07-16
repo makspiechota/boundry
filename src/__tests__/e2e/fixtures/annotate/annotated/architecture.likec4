@@ -1,0 +1,29 @@
+specification {
+  element module {
+    style { shape rectangle }
+  }
+  tag proposed {
+    color #f59e0b
+  }
+}
+
+model {
+  module api 'API' {
+    metadata { folder 'src/api' }
+  }
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module legacy 'Legacy' {
+    metadata { folder 'src/legacy' }
+  }
+
+  api -> domain
+  api -> legacy #proposed
+}
+
+views {
+  view index {
+    include *
+  }
+}

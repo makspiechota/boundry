@@ -107,3 +107,46 @@ export function newlyAllowedEdges(
   const allowedAtBase = new Set(base.allowed.map(edgeKey));
   return head.allowed.filter((edge) => !allowedAtBase.has(edgeKey(edge)));
 }
+
+/**
+ * Modules present at `head` but not at `base`, keyed by id. A `#proposed` element
+ * stays a module (the marker is visual-only), so this reports both bare-added and
+ * already-proposed new boxes — the annotator makes marking idempotent.
+ */
+export function newlyAddedModules(base: BoundaryModel, head: BoundaryModel): Module[] {
+  const atBase = new Set(base.modules.map((m) => m.id));
+  return head.modules.filter((m) => !atBase.has(m.id));
+}
+
+/**
+ * The accepted state, written as a canonical string — the lock. `approve` records
+ * it so change detection has a baseline it OWNS, rather than trusting whatever git
+ * happens to hold. Deterministic: fields and lists are sorted, so the same model
+ * always serializes byte-for-byte the same.
+ */
+export function serializeModel(model: BoundaryModel): string {
+  const canonical = {
+    modules: [...model.modules]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((m) => ({ id: m.id, title: m.title, path: m.path, kind: m.kind })),
+    allowed: [...model.allowed]
+      .sort((a, b) => edgeKey(a).localeCompare(edgeKey(b)))
+      .map((e) => ({ from: e.from, to: e.to })),
+    wildcards: [...model.wildcards].sort(),
+    exemptImporters: [...model.exemptImporters].sort(),
+    ...(model.governRoot ? { governRoot: model.governRoot } : {}),
+  };
+  return `${JSON.stringify(canonical, null, 2)}\n`;
+}
+
+/** Read a lock back into a model. Inverse of {@link serializeModel}. */
+export function parseModel(text: string): BoundaryModel {
+  const raw = JSON.parse(text);
+  return {
+    modules: raw.modules ?? [],
+    allowed: raw.allowed ?? [],
+    wildcards: raw.wildcards ?? [],
+    exemptImporters: raw.exemptImporters ?? [],
+    governRoot: raw.governRoot,
+  };
+}

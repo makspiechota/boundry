@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { Pipeline, type VerifyResult } from '../core/pipeline/pipeline.js';
@@ -8,7 +8,7 @@ import { LikeC4Visualizer } from '../adapters/visualizer/likec4.js';
 import { DepCruiserEnforcer } from '../adapters/enforcer/depcruiser.js';
 
 const USAGE =
-  'usage: boundry <generate|check|approve|verify> [--arch <dir>] [--base <git-ref>] [--cwd <dir>] [--out <file>] [sources...]';
+  'usage: boundry <generate|check|approve|verify|annotate> [--arch <dir>] [--base <git-ref>] [--cwd <dir>] [--out <file>] [sources...]';
 
 function optValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -83,6 +83,10 @@ async function main(): Promise<void> {
   const cwd = optValue(rest, '--cwd');
   if (cwd) process.chdir(resolve(cwd));
 
+  // The accepted-state lock lives beside the diagram it locks. `approve` writes
+  // it; `annotate` reads it — the baseline Boundry owns, not one inferred from git.
+  const lockFile = join(archDir, 'boundry.lock');
+
   const pipeline = new Pipeline(new LikeC4Visualizer(archDir), new DepCruiserEnforcer());
   const grantedSince = (ref: string) =>
     pipeline.verify(new LikeC4Visualizer(materializeArchAt(archDir, ref)));
@@ -147,8 +151,31 @@ async function main(): Promise<void> {
     } else {
       console.error('Boundry: ⚠ no --base given — approving without verifying that every new edge was proposed');
     }
-    await pipeline.approve();
-    console.log('Boundry: ✓ approved — stripped #proposed markers from the diagram');
+    const lock = await pipeline.approve();
+    writeFileSync(lockFile, lock);
+    console.log('Boundry: ✓ approved — enacted the diagram and wrote', relative(process.cwd(), lockFile));
+    return;
+  }
+
+  if (command === 'annotate') {
+    if (!existsSync(lockFile)) {
+      console.error(
+        `Boundry: no ${relative(process.cwd(), lockFile)} — run 'boundry approve' first to record an accepted state`,
+      );
+      process.exitCode = 2;
+      return;
+    }
+    const { edges, modules } = await pipeline.annotate(readFileSync(lockFile, 'utf8'));
+    if (edges.length === 0 && modules.length === 0) {
+      console.log('Boundry: ✓ nothing to annotate — the diagram matches the accepted lock');
+      return;
+    }
+    console.log(
+      `Boundry: ✎ marked ${edges.length} edge(s) and ${modules.length} box(es) #proposed:`,
+    );
+    for (const edge of edges) console.log(`  ${edge.from} → ${edge.to}`);
+    for (const mod of modules) console.log(`  [${mod.title}]`);
+    console.log('  Review the highlighted diagram, then approve or revert.');
     return;
   }
 

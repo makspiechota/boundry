@@ -258,6 +258,25 @@ Point your agents at
 [`.claude/skills/define-architecture-boundaries`](.claude/skills/define-architecture-boundaries/SKILL.md)
 and they'll follow this protocol.
 
+### Catching drift — the lock and `annotate` (prototype)
+
+`verify --base` trusts git for the baseline, which conflates *approved* with
+*committed*. If you'd rather Boundry own that baseline: `approve` records the
+accepted model to **`boundry.lock`** beside the diagram, and `annotate` compares
+against it — no git ref required.
+
+```bash
+boundry approve  --arch arch          # enact proposals AND write boundry.lock
+boundry annotate --arch arch          # rewrite undeclared additions as #proposed
+```
+
+`annotate` finds every edge or box that drifted past the lock without a marker —
+a self-grant — and rewrites it in place as a `#proposed` proposal. That's not
+cosmetic: a `#proposed` edge leaves the allow-list, so the silent grant becomes a
+red-again check and a highlighted box on the diagram, awaiting a real approval. It
+handles additions only; a removal is reported, not re-drawn (re-adding a deleted
+box would resurrect it as an enforced module).
+
 ## CLI
 
 ```
@@ -265,6 +284,7 @@ boundry check    [--arch <dir>] [--cwd <dir>] [sources...]
 boundry generate [--arch <dir>] [--cwd <dir>] [--out <file>]
 boundry verify   [--arch <dir>] [--cwd <dir>] --base <git-ref>
 boundry approve  [--arch <dir>] [--cwd <dir>] [--base <git-ref>]
+boundry annotate [--arch <dir>]
 ```
 
 | Flag | Meaning |
@@ -279,7 +299,10 @@ boundry approve  [--arch <dir>] [--cwd <dir>] [--base <git-ref>]
 - **`generate`** just emits the dependency-cruiser config so you can commit it or
   run `depcruise` yourself.
 - **`verify`** rejects dependencies granted without a proposal.
-- **`approve`** strips `#proposed` markers. For humans, not agents.
+- **`approve`** enacts markers (strips `#proposed`, removes `#proposal-delete`) and
+  writes `boundry.lock`. For humans, not agents.
+- **`annotate`** rewrites undeclared additions as `#proposed`, diffing against
+  `boundry.lock`.
 
 Boundry warns (but does not fail) when a mapped folder matches **zero** files, and
 **fails outright** when a check analysed no files at all — so a passing check can

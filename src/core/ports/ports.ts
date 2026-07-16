@@ -1,4 +1,4 @@
-import type { BoundaryModel } from '../model/boundary-model.js';
+import type { AllowedEdge, BoundaryModel } from '../model/boundary-model.js';
 
 /** A driven port: turns some diagram source into the boundary model. */
 export interface VisualizerPort {
@@ -8,6 +8,13 @@ export interface VisualizerPort {
    * promoting intent edges to approved. Source-preserving; never an LLM edit.
    */
   approve(): Promise<void>;
+  /**
+   * Deterministically mark the given edges and elements `#proposed` in the
+   * source. The inverse of `approve` for additions: it rewrites an undeclared
+   * change into an explicit, colourable proposal. Idempotent — anything already
+   * marked is left alone. Source-preserving; never an LLM edit.
+   */
+  propose(edges: AllowedEdge[], moduleIds: string[]): Promise<void>;
 }
 
 /** A generated linter config artifact. */

@@ -290,3 +290,81 @@ export function matchesDiagram(expectedPath: string): (actual: string) => void {
     );
   };
 }
+
+// ─── Lock + annotate (accepted state → colourable proposal) ──────────
+
+export interface AnnotateGiven {
+  /** Directory holding architecture.likec4 AND a boundry.lock accepted state. */
+  archPath: string;
+}
+
+/**
+ * Approve a proposed diagram and return the lock string it produces — the
+ * accepted state Boundry records, on a throwaway copy so the fixture stays clean.
+ */
+export function approvingWritesLock(): (given: ApprovalGiven) => Promise<string> {
+  return async ({ proposedArchPath }) => {
+    const workDir = mkdtempSync(join(tmpdir(), "boundry-lock-"));
+    cpSync(resolve(proposedArchPath), workDir, { recursive: true });
+    const pipeline = new Pipeline(new LikeC4Visualizer(workDir), new DepCruiserEnforcer());
+    return pipeline.approve();
+  };
+}
+
+/**
+ * Annotate a drifted diagram against its committed lock (on a throwaway copy) and
+ * return the rewritten source, so a test can see the injected `#proposed` markers.
+ */
+export function annotating(): (given: AnnotateGiven) => Promise<string> {
+  return async ({ archPath }) => {
+    const workDir = mkdtempSync(join(tmpdir(), "boundry-annotate-"));
+    cpSync(resolve(archPath), workDir, { recursive: true });
+    const pipeline = new Pipeline(new LikeC4Visualizer(workDir), new DepCruiserEnforcer());
+    await pipeline.annotate(readFileSync(join(workDir, "boundry.lock"), "utf8"));
+    return readFileSync(join(workDir, "architecture.likec4"), "utf8");
+  };
+}
+
+/**
+ * The full loop: annotate the drifted diagram against its lock, then run the real
+ * check. Proves annotating a bare self-grant into a `#proposed` edge actually
+ * flips it back out of the allow-list — the import is a violation again.
+ */
+export function annotatingThenChecking(sources: string[] = ["src"]): WhenAction {
+  return async ({ likeC4Path, codebasePath }) => {
+    const workDir = mkdtempSync(join(tmpdir(), "boundry-annotate-check-"));
+    cpSync(resolve(likeC4Path), workDir, { recursive: true });
+    const pipeline = new Pipeline(new LikeC4Visualizer(workDir), new DepCruiserEnforcer());
+    await pipeline.annotate(readFileSync(join(workDir, "boundry.lock"), "utf8"));
+
+    const previousCwd = process.cwd();
+    process.chdir(resolve(codebasePath));
+    try {
+      return await pipeline.check(sources);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  };
+}
+
+/** Assertion: the recorded lock lists this edge as allowed. */
+export function lockAllowsEdge(from: string, to: string): (lock: string) => void {
+  return (lock) => {
+    const allowed: AllowedEdge[] = JSON.parse(lock).allowed ?? [];
+    assert.ok(
+      allowed.some((e) => e.from === from && e.to === to),
+      `expected the lock to allow ${from} -> ${to}, got: ${allowed.map((e) => `${e.from}->${e.to}`).join(", ")}`
+    );
+  };
+}
+
+/** Assertion: the recorded lock does NOT list this edge (it was a proposal). */
+export function lockOmitsEdge(from: string, to: string): (lock: string) => void {
+  return (lock) => {
+    const allowed: AllowedEdge[] = JSON.parse(lock).allowed ?? [];
+    assert.ok(
+      !allowed.some((e) => e.from === from && e.to === to),
+      `expected the lock to omit ${from} -> ${to}, but it was recorded as allowed`
+    );
+  };
+}

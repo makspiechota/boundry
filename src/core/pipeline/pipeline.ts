@@ -4,11 +4,20 @@ import type {
   EnforcerConfig,
   CheckResult,
 } from "../ports/ports.js";
-import type { AllowedEdge } from "../model/boundary-model.js";
+import type { AllowedEdge, Module } from "../model/boundary-model.js";
 import {
+  newlyAddedModules,
   newlyAllowedEdges,
   newlyExemptedImporters,
+  parseModel,
+  serializeModel,
 } from "../model/boundary-model.js";
+
+/** What the annotator turned into explicit `#proposed` proposals. */
+export interface AnnotateResult {
+  edges: AllowedEdge[];
+  modules: Module[];
+}
 
 /**
  * What a diagram grants that the approved base did not. Both kinds of grant are
@@ -60,8 +69,30 @@ export class Pipeline {
     };
   }
 
-  /** Approve proposed edges: strip their `#proposed` markers from the diagram. */
-  async approve(): Promise<void> {
-    return this.visualizer.approve();
+  /**
+   * Enact the diagram's pending proposals (strip `#proposed`, remove
+   * `#proposal-delete`), then return the resulting accepted model as a lock
+   * string. The caller persists it: that lock — written by approve, not inferred
+   * from git — is the baseline change detection compares against.
+   */
+  async approve(): Promise<string> {
+    await this.visualizer.approve();
+    const accepted = await this.visualizer.read();
+    return serializeModel(accepted);
+  }
+
+  /**
+   * Compare the diagram against a previously accepted lock and rewrite every
+   * undeclared addition — a bare new edge (a self-grant) or box — into an
+   * explicit `#proposed` proposal in the source. Turns silent drift into a
+   * reviewable, colourable proposal without trusting git for the baseline.
+   */
+  async annotate(lock: string): Promise<AnnotateResult> {
+    const accepted = parseModel(lock);
+    const head = await this.visualizer.read();
+    const edges = newlyAllowedEdges(accepted, head);
+    const modules = newlyAddedModules(accepted, head);
+    await this.visualizer.propose(edges, modules.map((m) => m.id));
+    return { edges, modules };
   }
 }

@@ -36,6 +36,46 @@ function assertUsableRegex(pattern: string, elementId: string): string {
   return pattern;
 }
 
+/**
+ * Walk the AST through CONTAINMENT only — descending into a property solely when
+ * the child names this node as its `$container`. That skips cross-references (a
+ * relation's endpoint links to the element it names), so a node is never reached
+ * through another's reference to it, and traversal never leaves this document.
+ */
+function walkContained(root: any, visit: (node: any) => void): void {
+  const go = (node: any): void => {
+    if (!node || typeof node !== 'object') return;
+    visit(node);
+    for (const key of Object.keys(node)) {
+      if (key.startsWith('$')) continue;
+      const child = node[key];
+      for (const kid of Array.isArray(child) ? child : [child]) {
+        if (kid && typeof kid === 'object' && kid.$container === node) go(kid);
+      }
+    }
+  };
+  go(root);
+}
+
+/**
+ * The fully-qualified id of an element AST node — its own name and every
+ * enclosing element's, joined by '.'. Matches the id the computed model assigns,
+ * for nested elements as well as flat ones.
+ */
+function fqnOf(astElement: any): string | undefined {
+  if (!astElement) return undefined;
+  const parts: string[] = [];
+  for (let n = astElement; n; n = n.$container) {
+    if (n.$type === 'Element' && n.name) parts.unshift(n.name);
+  }
+  return parts.length ? parts.join('.') : undefined;
+}
+
+/** The element an `a -> b` endpoint (FqnRef) resolves to, or undefined. */
+function endpointElement(fqnRef: any): any {
+  return fqnRef?.value?.ref;
+}
+
 /** The literal source text of a TagRef node, or undefined if it is not one. */
 function tagRefText(node: any, text: string): string | undefined {
   if (node.$type !== 'TagRef' || !node.$cstNode) return undefined;
@@ -100,8 +140,7 @@ function statementRemovalRange(statement: any, text: string): TextRange {
  */
 function collectApprovalRanges(root: any, text: string): TextRange[] {
   const ranges: TextRange[] = [];
-  const walk = (node: any): void => {
-    if (!node || typeof node !== 'object') return;
+  walkContained(root, (node) => {
     const marker = tagRefText(node, text);
     if (marker === '#proposed') {
       ranges.push(proposedRemovalRange(node, text));
@@ -109,15 +148,7 @@ function collectApprovalRanges(root: any, text: string): TextRange[] {
       const statement = enclosingStatement(node);
       if (statement?.$cstNode) ranges.push(statementRemovalRange(statement, text));
     }
-    for (const key of Object.keys(node)) {
-      if (key.startsWith('$')) continue;
-      const child = node[key];
-      for (const kid of Array.isArray(child) ? child : [child]) {
-        if (kid && typeof kid === 'object' && kid.$container === node) walk(kid);
-      }
-    }
-  };
-  walk(root);
+  });
   // A whole-statement removal can contain a `#proposed` token range inside it
   // (a box being deleted that also carried a proposed edge). Drop any range that
   // another wholly contains, so back-to-front splicing never double-cuts.
@@ -235,6 +266,62 @@ export class LikeC4Visualizer implements VisualizerPort {
       let next = text;
       for (const { start, end } of ranges.sort((a, b) => b.start - a.start)) {
         next = next.slice(0, start) + next.slice(end);
+      }
+      writeFileSync(filePath, next);
+    }
+  }
+
+  /**
+   * Deterministically mark the given edges and elements `#proposed`. The inverse
+   * of `approve` for additions: an undeclared new edge (a self-grant) or box is
+   * rewritten into an explicit, colourable proposal. It locates each target's
+   * relation/element in the CST by its resolved ids and injects the marker,
+   * skipping anything already marked, so it is idempotent.
+   */
+  async propose(edges: AllowedEdge[], moduleIds: string[]): Promise<void> {
+    if (edges.length === 0 && moduleIds.length === 0) return;
+    const wantEdge = new Set(edges.map((e) => `${e.from} -> ${e.to}`));
+    const wantModule = new Set(moduleIds);
+
+    const likec4: any = await LikeC4.fromWorkspace(this.workspaceDir);
+    for (const doc of likec4.LangiumDocuments.all) {
+      const filePath: string = doc.uri.fsPath;
+      if (!filePath.endsWith('.likec4')) continue;
+      const text: string = doc.textDocument?.getText?.() ?? readFileSync(filePath, 'utf8');
+
+      const inserts: { at: number; text: string }[] = [];
+      walkContained(doc.parseResult?.value, (node) => {
+        if (node.$type === 'Relation' && node.$cstNode) {
+          const from = fqnOf(endpointElement(node.source));
+          const to = fqnOf(endpointElement(node.target));
+          if (from && to && wantEdge.has(`${from} -> ${to}`)) {
+            const { offset, end } = node.$cstNode;
+            if (!text.slice(offset, end).includes('#proposed')) {
+              inserts.push({ at: end, text: ' #proposed' });
+            }
+          }
+        } else if (node.$type === 'Element' && node.$cstNode) {
+          const id = fqnOf(node);
+          const body = node.body;
+          if (id && wantModule.has(id) && body?.$cstNode) {
+            const braceStart = body.$cstNode.offset;
+            const bodyText = text.slice(braceStart, body.$cstNode.end);
+            if (!bodyText.includes('#proposed')) {
+              // Insert as the body's first line, matching the indentation of the
+              // line that already follows the opening brace.
+              const afterBrace = text.indexOf('{', braceStart) + 1;
+              const nextLine = text.indexOf('\n', afterBrace) + 1;
+              const indent = (text.slice(nextLine).match(/^[ \t]*/) ?? [''])[0];
+              inserts.push({ at: afterBrace, text: `\n${indent}#proposed` });
+            }
+          }
+        }
+      });
+      if (inserts.length === 0) continue;
+
+      let next = text;
+      for (const { at, text: fragment } of inserts.sort((a, b) => b.at - a.at)) {
+        next = next.slice(0, at) + fragment + next.slice(at);
       }
       writeFileSync(filePath, next);
     }
