@@ -11,6 +11,14 @@ model" promise hold for deep, nested C4 trees.
 
 ### Added
 
+- **`#proposal-delete` — the deletion half of the approval lifecycle.** Tag an
+  edge or a box `#proposal-delete` to propose retiring it. The marker colours it
+  red; a pending deletion changes nothing (the edge stays allowed, the box stays
+  enforced), so proposing a removal never breaks the build. On `approve`, the
+  marked edge or box is removed from the diagram outright — deterministically, by
+  splicing the LikeC4 CST — where `#proposed` only strips its own marker and
+  leaves the edge behind. `#proposed` (amber, additive) and `#proposal-delete`
+  (red, subtractive) are now the two halves of every change.
 - **File-level mapping — `metadata { file 'src/x.ts' }`** ([#3]). An element maps
   to a single file instead of a folder. A file module owns exactly its file; a
   folder module owns its subtree minus any mapped descendants — nested folders

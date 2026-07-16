@@ -15,6 +15,10 @@ specification {
   tag proposed {
     color #f59e0b
   }
+  // Proposes a removal: red, and approve takes the edge/box with it.
+  tag proposal-delete {
+    color #ef4444
+  }
 }
 
 model {

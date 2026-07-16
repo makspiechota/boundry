@@ -1,0 +1,31 @@
+specification {
+  element module {
+    style { shape rectangle }
+  }
+  tag proposal-delete {
+    color #ef4444
+  }
+}
+
+model {
+  module api 'API' {
+    metadata { folder 'src/api' }
+  }
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module legacy 'Legacy' {
+    metadata { folder 'src/legacy' }
+  }
+
+  api -> domain
+  // Proposed for deletion. Still allowed while pending — approving removes it,
+  // and only then does an api -> legacy import become a violation.
+  api -> legacy #proposal-delete
+}
+
+views {
+  view index {
+    include *
+  }
+}

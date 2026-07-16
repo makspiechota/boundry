@@ -237,6 +237,23 @@ the allow-list, the newly-allowed set is exactly the set of self-approvals — n
 diff engine required. `approve --base` runs the same gate first, so it won't
 launder a self-granted edge into an approved one.
 
+**To retire an edge or a box, propose its removal** with `#proposal-delete`
+instead of deleting it. The marker colours it red; a pending deletion changes
+nothing (the edge stays allowed, the box stays enforced) so it never breaks the
+build. Then `approve` removes the marked edge or box outright:
+
+```likec4
+  module legacy 'Legacy' {
+    #proposal-delete
+    metadata { folder 'src/legacy' }
+  }
+  api -> legacy #proposal-delete
+```
+
+So `#proposed` and `#proposal-delete` are the two halves of a change — an amber
+addition that `approve` makes permanent, and a red removal that `approve` takes
+away — each a visible mark on the diagram until a human acts.
+
 Point your agents at
 [`.claude/skills/define-architecture-boundaries`](.claude/skills/define-architecture-boundaries/SKILL.md)
 and they'll follow this protocol.

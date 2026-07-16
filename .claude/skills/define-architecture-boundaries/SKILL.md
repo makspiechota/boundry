@@ -68,6 +68,10 @@ specification {
   tag proposed {
     color #f59e0b
   }
+  // Proposes a removal: colours the edge/box red; approve removes it outright.
+  tag proposal-delete {
+    color #ef4444
+  }
   // Marks a wildcard box. Reserved for the composition root.
   tag anything {
     color #64748b
@@ -158,6 +162,27 @@ permission: it is excluded from the allow-list, so `boundry check` still fails
 until a human approves. That is correct — say the check is still red and that
 the proposal is awaiting approval, and stop there.
 
+### Proposing a removal — `#proposal-delete`
+
+To retire an edge or a module, do not delete it — **propose** its removal by
+tagging it `#proposal-delete`. The tag colours it red, and a human's `approve`
+removes the edge or box outright (where `#proposed` only strips its own marker
+and leaves the edge behind).
+
+```likec4
+  module legacy 'Legacy' {
+    #proposal-delete
+    metadata { folder 'src/legacy' }
+  }
+
+  api -> legacy #proposal-delete
+```
+
+A pending deletion **changes nothing**: the edge stays allowed and the box stays
+enforced until approved, so proposing a removal never breaks the build. If you
+mark a box for deletion, mark every edge touching it too — approving removes the
+box, and an edge left pointing at a deleted box makes the diagram invalid.
+
 ### Never do these
 
 - **Never add a bare (unmarked) edge** to make a check pass. That grants
@@ -166,6 +191,10 @@ the proposal is awaiting approval, and stop there.
   `boundry approve` refuses to launder it.
 - **Never remove or edit an existing `#proposed` marker.** Stripping the marker
   *is* the approval, and approval is a human act.
+- **Never delete an edge or a box, or strip a `#proposal-delete` marker.**
+  Removing an edge changes the approved architecture; removing a box unmaps its
+  folder, which *loosens* enforcement. To retire either, tag it
+  `#proposal-delete` and stop — enacting the removal is the human's `approve`.
 - **Never run `boundry approve`.** That command is the human's.
 - **Never widen an edge to dodge a violation** (e.g. mapping a coarser folder,
   or deleting a module so its rules vanish).
@@ -195,6 +224,7 @@ the proposal is awaiting approval, and stop there.
 - [ ] Every edge you added in this change carries `#proposed`.
 - [ ] You added no `#anything` box and no edge into one.
 - [ ] You added or widened no `exemptImporters` pattern.
+- [ ] You deleted nothing directly — removals are tagged `#proposal-delete`.
 
 ## Running it
 

@@ -36,18 +36,15 @@ function assertUsableRegex(pattern: string, elementId: string): string {
   return pattern;
 }
 
-/** A `#proposed` marker in the source — on an element or a relationship alike. */
-function isProposedTag(node: any, text: string): boolean {
-  return (
-    node.$type === 'TagRef' &&
-    node.$cstNode &&
-    text.slice(node.$cstNode.offset, node.$cstNode.end) === '#proposed'
-  );
+/** The literal source text of a TagRef node, or undefined if it is not one. */
+function tagRefText(node: any, text: string): string | undefined {
+  if (node.$type !== 'TagRef' || !node.$cstNode) return undefined;
+  return text.slice(node.$cstNode.offset, node.$cstNode.end);
 }
 
 /**
- * The source to remove for one marker. A marker alone on its line takes the
- * whole line (so approving leaves no blank gap); an inline one takes just the
+ * The source to remove for a `#proposed` marker. A marker alone on its line takes
+ * the whole line (so approving leaves no blank gap); an inline one takes just the
  * token and the space before it. The `tag proposed` declaration in the
  * specification is untouched — the vocabulary stays for the next proposal.
  */
@@ -67,25 +64,66 @@ function proposedRemovalRange(tag: any, text: string): TextRange {
   return { start, end };
 }
 
-function collectProposedRanges(root: any, text: string): TextRange[] {
+/**
+ * The nearest relationship or element the marker sits in, found via the AST
+ * `$container` chain — the true syntactic parent. A plain object-graph walk would
+ * follow the cross-reference from a relation's endpoint into the element it names
+ * and mis-attribute an element's marker to a relation; `$container` never does.
+ */
+function enclosingStatement(tagRef: any): any {
+  for (let n = tagRef.$container; n; n = n.$container) {
+    if (n.$type === 'Relation' || n.$type === 'Element') return n;
+  }
+  return undefined;
+}
+
+/**
+ * The whole-statement range for a `#proposal-delete` marker: the entire relation
+ * or element block, from the start of its first line through its trailing
+ * newline, so approving the deletion removes the edge/box and leaves no gap.
+ */
+function statementRemovalRange(statement: any, text: string): TextRange {
+  const { offset, end } = statement.$cstNode;
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  const nl = text.indexOf('\n', end);
+  return { start: lineStart, end: nl === -1 ? text.length : nl + 1 };
+}
+
+/**
+ * Every source range to splice out to approve a diagram: a `#proposed` marker
+ * strips to its token (the edge/box stays and becomes permanent); a
+ * `#proposal-delete` marker takes its whole enclosing statement (the edge/box is
+ * removed). Ranges are collected via a containment-only walk — descending solely
+ * into true children (`child.$container === node`), never cross-references — so
+ * one marker is never counted through another element's reference to it, and no
+ * range ever escapes into a different document's text.
+ */
+function collectApprovalRanges(root: any, text: string): TextRange[] {
   const ranges: TextRange[] = [];
-  const seen = new Set<any>();
   const walk = (node: any): void => {
-    if (!node || typeof node !== 'object' || seen.has(node)) return;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) walk(item);
-      return;
-    }
-    if (isProposedTag(node, text)) {
+    if (!node || typeof node !== 'object') return;
+    const marker = tagRefText(node, text);
+    if (marker === '#proposed') {
       ranges.push(proposedRemovalRange(node, text));
+    } else if (marker === '#proposal-delete') {
+      const statement = enclosingStatement(node);
+      if (statement?.$cstNode) ranges.push(statementRemovalRange(statement, text));
     }
     for (const key of Object.keys(node)) {
-      if (!key.startsWith('$')) walk(node[key]);
+      if (key.startsWith('$')) continue;
+      const child = node[key];
+      for (const kid of Array.isArray(child) ? child : [child]) {
+        if (kid && typeof kid === 'object' && kid.$container === node) walk(kid);
+      }
     }
   };
   walk(root);
-  return ranges;
+  // A whole-statement removal can contain a `#proposed` token range inside it
+  // (a box being deleted that also carried a proposed edge). Drop any range that
+  // another wholly contains, so back-to-front splicing never double-cuts.
+  return ranges.filter(
+    (r) => !ranges.some((o) => o !== r && o.start <= r.start && o.end >= r.end && o.end - o.start > r.end - r.start),
+  );
 }
 
 /**
@@ -178,17 +216,20 @@ export class LikeC4Visualizer implements VisualizerPort {
   }
 
   /**
-   * Deterministically strip `#proposed` markers from the diagram source,
-   * promoting intent edges to approved. Source-preserving; never an LLM edit —
-   * it locates each marked relationship in the LikeC4 CST and splices out its
-   * proposal decoration, leaving all other formatting intact.
+   * Deterministically enact a diagram's pending proposals. Source-preserving,
+   * never an LLM edit — it walks the LikeC4 CST and splices ranges directly:
+   *   - `#proposed` markers are stripped, promoting their intent edges to
+   *     approved (the edge/box stays, permanently allowed);
+   *   - `#proposal-delete` markers take their whole edge or box with them, so
+   *     approving a proposed removal actually removes it.
+   * All other formatting is left intact.
    */
   async approve(): Promise<void> {
     const likec4: any = await LikeC4.fromWorkspace(this.workspaceDir);
     for (const doc of likec4.LangiumDocuments.all) {
       const filePath: string = doc.uri.fsPath;
       const text: string = doc.textDocument?.getText?.() ?? readFileSync(filePath, 'utf8');
-      const ranges = collectProposedRanges(doc.parseResult?.value, text);
+      const ranges = collectApprovalRanges(doc.parseResult?.value, text);
       if (ranges.length === 0) continue;
 
       let next = text;
