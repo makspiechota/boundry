@@ -3,14 +3,25 @@
  * from. A visualizer adapter produces it; an enforcer adapter renders it.
  */
 
-/** A unit of architecture that maps to a folder of source code. */
+/** A unit of architecture that maps to a folder or a single file of source. */
 export interface Module {
   /** Stable id, taken from the diagram element. */
   id: string;
   /** Human-readable name for messages. */
   title: string;
-  /** Source path prefix the module owns, e.g. "src/core". */
-  folder: string;
+  /**
+   * Source path the module owns — a folder prefix (e.g. "src/core") or a single
+   * file (e.g. "src/ports/contract.ts"), per `kind`.
+   */
+  path: string;
+  /**
+   * Whether `path` is a folder (owns everything under it) or a single file
+   * (owns exactly that file). A file leaf lets a guarded contract or port sit
+   * beside its sibling sub-folders in a nested diagram, so its edges stay
+   * sibling-to-sibling — which is what keeps a deep C4 tree legal in LikeC4
+   * (ancestor↔descendant relationships are rejected) *and* enforceable.
+   */
+  kind: 'folder' | 'file';
 }
 
 /** A permitted dependency: modules in `from` may import modules in `to`. */

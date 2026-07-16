@@ -15,6 +15,13 @@ not draw is forbidden.
    a source folder, relative to the repo root (e.g. `src/domain`). Elements
    **without** it are ignored — keep actors, external systems, and notes in the
    diagram freely; they never participate in enforcement.
+   - **`metadata { file '<path>' }`** maps an element to a *single file* instead.
+     Use it for a guarded contract or port that lives beside sibling sub-folders
+     in a deep nested diagram: as a file leaf it stays a sibling, so its edges
+     are sibling-to-sibling and the model is legal in LikeC4 (which rejects an
+     ancestor↔descendant edge). A file module owns exactly its file; a folder
+     module owns its subtree minus any mapped descendants (nested folders and
+     file leaves alike). Declare `folder` or `file`, never both.
 
 2. **A relationship `a -> b`** declares that `a` may depend on `b`. It is a
    directional allow-list. `a -> b` does **not** permit `b -> a`.
@@ -30,7 +37,7 @@ not draw is forbidden.
   other module folder is forbidden.
 - Imports into non-module paths (`node_modules`, unmapped folders) are never
   constrained — Boundry only governs edges between folders you mapped.
-- One element maps to exactly one folder.
+- One element maps to exactly one path — a folder or a single file.
 - **A repo may declare a govern root** — `metadata { governRoot 'src' }` on a
   top element. Then the whole tree is governed: importing anything under the
   root that no module claims is a **violation**, and `check` warns about code no

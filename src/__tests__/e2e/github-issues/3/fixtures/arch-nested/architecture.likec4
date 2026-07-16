@@ -1,0 +1,44 @@
+specification {
+  element component {
+    style {
+      shape rectangle
+    }
+  }
+}
+
+model {
+  // A deep, nested tree — good documentation with drill-down at each level.
+  component ports 'ports' {
+    metadata { folder 'src/ports' }
+
+    // A guarded FILE, a leaf beside its sibling sub-folder. Because it is a
+    // sibling (not the container), its edges stay sibling-to-sibling and the
+    // model is legal in LikeC4 — where an ancestor↔descendant edge is rejected.
+    component store 'in-memory-store' {
+      metadata { file 'src/ports/in-memory-store.ts' }
+    }
+
+    component read 'story-points-read' {
+      metadata { folder 'src/ports/story-points-read' }
+
+      component stub 'stub' {
+        metadata { folder 'src/ports/story-points-read/stub' }
+      }
+    }
+  }
+
+  // stub (a descendant of ports) may import the store file (a child of ports).
+  // Collapsed to folders this would be descendant → ancestor and illegal; as a
+  // file leaf it is a legal cross-subtree edge.
+  stub -> store
+}
+
+views {
+  view index {
+    include *
+  }
+
+  view portsView of ports {
+    include ports, ports.*
+  }
+}

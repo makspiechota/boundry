@@ -102,7 +102,7 @@ export class LikeC4Visualizer implements VisualizerPort {
     const model = await likec4.computedModel();
 
     const modules: Module[] = [];
-    const folderIds = new Set<string>();
+    const moduleIds = new Set<string>();
     const wildcardIds = new Set<string>();
     const exemptImporters = new Set<string>();
     let governRoot: string | undefined;
@@ -129,12 +129,27 @@ export class LikeC4Visualizer implements VisualizerPort {
         continue;
       }
 
-      const meta = el.getMetadata('folder');
-      const folder = Array.isArray(meta) ? meta[0] : meta;
-      if (folder) {
+      // An element maps to a folder (owns its subtree) or a single file (owns
+      // exactly itself). A file leaf keeps a guarded contract sitting beside its
+      // sibling sub-folders, so a deep nested diagram stays legal AND enforceable.
+      const folderMeta = el.getMetadata('folder');
+      const fileMeta = el.getMetadata('file');
+      const folder = Array.isArray(folderMeta) ? folderMeta[0] : folderMeta;
+      const file = Array.isArray(fileMeta) ? fileMeta[0] : fileMeta;
+      if (folder && file) {
+        throw new Error(
+          `element '${String(el.id)}' declares both 'folder' and 'file' — a module maps to one path`,
+        );
+      }
+      if (folder || file) {
         const id = String(el.id);
-        modules.push({ id, title: el.title, folder });
-        folderIds.add(id);
+        modules.push({
+          id,
+          title: el.title,
+          path: (folder ?? file)!,
+          kind: folder ? 'folder' : 'file',
+        });
+        moduleIds.add(id);
       }
     }
 
@@ -147,8 +162,8 @@ export class LikeC4Visualizer implements VisualizerPort {
       const to = String(rel.target.id);
       // An edge into a wildcard is kept like any other grant, so `verify` sees a
       // self-granted `#anything` exemption as the newly-allowed edge it is.
-      const targetGoverned = folderIds.has(to) || wildcardIds.has(to);
-      if (from !== to && folderIds.has(from) && targetGoverned) {
+      const targetGoverned = moduleIds.has(to) || wildcardIds.has(to);
+      if (from !== to && moduleIds.has(from) && targetGoverned) {
         allowed.push({ from, to });
       }
     }

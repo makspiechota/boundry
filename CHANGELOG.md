@@ -4,7 +4,32 @@ All notable changes to Boundry are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [semver](https://semver.org/).
 
-## [0.2.0] — unreleased
+## [0.3.0] — unreleased
+
+Makes the "one file can be both the communication diagram and the enforcement
+model" promise hold for deep, nested C4 trees.
+
+### Added
+
+- **File-level mapping — `metadata { file 'src/x.ts' }`** ([#3]). An element maps
+  to a single file instead of a folder. A file module owns exactly its file; a
+  folder module owns its subtree minus any mapped descendants — nested folders
+  and file leaves alike.
+  - This is what lets a deep nested diagram stay legal *and* enforceable. A
+    guarded contract or port that sits beside sibling sub-folders can be a file
+    leaf rather than collapsing into its parent folder. Collapsed, its edges
+    become ancestor↔descendant, which LikeC4 rejects with
+    `Invalid parent-child relationship`; as a leaf they stay sibling-to-sibling.
+  - Declaring both `folder` and `file` on one element is an error.
+
+### Changed
+
+- **`Module.folder: string` → `Module.path: string` + `Module.kind: 'folder' | 'file'`.**
+  SDK-breaking; the diagram surface and CLI are unaffected.
+
+[#3]: https://github.com/makspiechota/boundry/issues/3
+
+## [0.2.0] — 2026-07-16
 
 The release that makes the diagram a *governed* artifact rather than just a
 source of rules. An agent can now be handed the diagram without being handed the

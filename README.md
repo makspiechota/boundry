@@ -18,8 +18,9 @@ diagram (LikeC4)  ──►  boundary model  ──►  dependency-cruiser rules
 
 ## How it works
 
-1. You annotate each element in your diagram with the folder it owns:
-   `metadata { folder 'src/domain' }`.
+1. You annotate each element in your diagram with the source it owns — a folder,
+   `metadata { folder 'src/domain' }`, or a single file,
+   `metadata { file 'src/ports/contract.ts' }`.
 2. Every relationship you draw (`a -> b`) is an **allowed** dependency.
    Anything you don't draw is **forbidden**.
 3. Boundry lifts the diagram into a source-agnostic boundary model, compiles a
@@ -50,6 +51,41 @@ it.
 A mapped folder claims its **entire subtree**, so the abstraction level stays
 yours: one box on `src/domain` covers everything beneath it. You add finer boxes
 where you want finer *rules*, not to satisfy the coverage check.
+
+### Mapping a single file (deep nested diagrams)
+
+A rich C4 model nests: `application` › `metrics` › `ports` › `story-points-read`
+› `stub`, with a drill-down view at each level. Sometimes a *file* is the guarded
+thing — a contract, a port, a single repository — sitting beside its sibling
+sub-folders. Map it to a file instead of a folder:
+
+```likec4
+component ports 'ports' {
+  metadata { folder 'src/ports' }
+
+  component store 'in-memory-store' {
+    metadata { file 'src/ports/in-memory-store.ts' }   // a leaf, not a folder
+  }
+  component read 'story-points-read' {
+    metadata { folder 'src/ports/story-points-read' }
+    component stub 'stub' {
+      metadata { folder 'src/ports/story-points-read/stub' }
+    }
+  }
+}
+
+stub -> store   // a legal cross-subtree edge
+```
+
+This is what lets a deep tree be **both** the documentation and the enforcement
+model. Collapse that file into its parent folder and the edge becomes
+`stub -> ports` — a descendant importing its ancestor, which LikeC4 rejects with
+`Invalid parent-child relationship`. As a file leaf, `store` is a sibling, so the
+edge is legal *and* Boundry governs the file exactly: only `stub` may import it,
+and the surrounding `ports` folder no longer owns it.
+
+A file module owns exactly its file; a folder module owns its subtree minus any
+mapped descendants — nested folders and file leaves alike.
 
 ### Exempting test files and ambient declarations
 
@@ -284,7 +320,7 @@ without touching the core.
 
 Current limitations:
 
-- One element maps to exactly one folder.
+- One element maps to exactly one path — a folder or a single file.
 - Nesting is supported: you can map a parent folder *and* its children. A
   parent's edges govern only the parent's own files — a child never inherits
   them and must be permitted explicitly.

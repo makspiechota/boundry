@@ -1,6 +1,10 @@
 import * as dependencyCruiser from 'dependency-cruiser';
 import type { EnforcerPort, EnforcerConfig, CheckResult, Violation } from '../../core/ports/ports.js';
-import { unconstrainedModules, type BoundaryModel } from '../../core/model/boundary-model.js';
+import {
+  unconstrainedModules,
+  type BoundaryModel,
+  type Module,
+} from '../../core/model/boundary-model.js';
 
 // dependency-cruiser ships CommonJS; reach `cruise` through either interop shape.
 const cruise: (
@@ -22,19 +26,37 @@ interface ForbiddenRule {
   to: PathMatcher;
 }
 
-function folderPrefix(folder: string): string {
-  return folder.replace(/\/+$/, '');
+function normalizePath(path: string): string {
+  return path.replace(/\/+$/, '');
 }
 
-function folderToRegex(folder: string): string {
-  const escaped = folderPrefix(folder).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return `^${escaped}/`;
+function escapeRegex(path: string): string {
+  return normalizePath(path).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** True if `child` is a folder strictly nested under `parent`. */
-function isDescendantFolder(child: string, parent: string): boolean {
-  const c = folderPrefix(child);
-  const p = folderPrefix(parent);
+/**
+ * The regex matching exactly the sources a module owns: everything under a
+ * folder (`^src/core/`), or a single file exactly (`^src/x.ts$`).
+ */
+function moduleScopeRegex(m: Module): string {
+  return m.kind === 'file' ? `^${escapeRegex(m.path)}$` : `^${escapeRegex(m.path)}/`;
+}
+
+/** True if `source` (a file path) belongs to module `m`, ignoring descendants. */
+function ownsSource(m: Module, source: string): boolean {
+  const p = normalizePath(m.path);
+  return m.kind === 'file' ? source === p : source.startsWith(`${p}/`);
+}
+
+/**
+ * True if module `child` is nested strictly under module `parent`. Only a folder
+ * can contain anything; a file (or a folder equal to the child) contains nothing.
+ * A folder nesting a file leaf counts — that is the whole point of file mapping.
+ */
+function isNestedUnder(child: Module, parent: Module): boolean {
+  if (parent.kind === 'file') return false;
+  const c = normalizePath(child.path);
+  const p = normalizePath(parent.path);
   return c !== p && c.startsWith(`${p}/`);
 }
 
@@ -51,17 +73,19 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
   for (const m of model.modules) allowedTargets.set(m.id, new Set([m.id]));
   for (const edge of model.allowed) allowedTargets.get(edge.from)?.add(edge.to);
 
-  // Each module's scope: its folder, carving out any mapped descendant folders.
+  // Each module's scope: its path, carving out any mapped descendants (a nested
+  // folder OR a mapped file leaf living inside it — both belong to their own,
+  // more-specific module).
   const scopeOf = new Map<string, PathMatcher>();
   for (const m of model.modules) {
     const descendants = model.modules
-      .filter((other) => isDescendantFolder(other.folder, m.folder))
-      .map((other) => folderToRegex(other.folder));
+      .filter((other) => isNestedUnder(other, m))
+      .map((other) => moduleScopeRegex(other));
     scopeOf.set(
       m.id,
       descendants.length
-        ? { path: folderToRegex(m.folder), pathNot: descendants }
-        : { path: folderToRegex(m.folder) },
+        ? { path: moduleScopeRegex(m), pathNot: descendants }
+        : { path: moduleScopeRegex(m) },
     );
   }
 
@@ -98,7 +122,8 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
   // module claims is forbidden, not free. Additive — the pair rules above still
   // decide every mapped-to-mapped edge on their own.
   if (model.governRoot) {
-    const claimed = model.modules.map((m) => folderToRegex(m.folder));
+    const rootAsFolder: Module = { id: '', title: '', path: model.governRoot, kind: 'folder' };
+    const claimed = model.modules.map(moduleScopeRegex);
     for (const from of model.modules) {
       if (unconstrained.has(from.id)) continue;
       rules.push({
@@ -106,7 +131,7 @@ function buildForbiddenRules(model: BoundaryModel): ForbiddenRule[] {
         comment: `${from.title} may not depend on code under '${model.governRoot}' that no module claims`,
         severity: 'error',
         from: asImporter(from.id),
-        to: { path: folderToRegex(model.governRoot), pathNot: claimed },
+        to: { path: moduleScopeRegex(rootAsFolder), pathNot: claimed },
       });
     }
   }
@@ -146,7 +171,7 @@ module.exports = {
       .filter((v) => v.rule?.severity === 'error')
       .map((v) => ({ from: v.from, to: v.to, rule: v.rule?.name ?? 'unknown' }));
 
-    // A module whose folder matched no source files enforces nothing — the
+    // A module whose path matched no source files enforces nothing — the
     // "green but inert" trap. Surface it so a passing check can't hide it.
     const seen: string[] = (output?.modules ?? []).map((m: any) => String(m.source));
 
@@ -162,9 +187,8 @@ module.exports = {
 
     const warnings: string[] = [];
     for (const mod of model.modules) {
-      const prefix = `${mod.folder.replace(/\/+$/, '')}/`;
-      if (!seen.some((source) => source.startsWith(prefix))) {
-        warnings.push(`module '${mod.title}' maps to '${mod.folder}', which matched 0 source files`);
+      if (!seen.some((source) => ownsSource(mod, source))) {
+        warnings.push(`module '${mod.title}' maps to '${mod.path}', which matched 0 source files`);
       }
     }
 
@@ -191,12 +215,11 @@ module.exports = {
     // claims. The model not covering the code is as much a gap as the code not
     // backing the model.
     if (model.governRoot) {
-      const rootPrefix = `${folderPrefix(model.governRoot)}/`;
-      const claimed = model.modules.map((m) => `${folderPrefix(m.folder)}/`);
+      const rootPrefix = `${normalizePath(model.governRoot)}/`;
       const unclaimed = new Set<string>();
       for (const source of seen) {
         if (!source.startsWith(rootPrefix)) continue;
-        if (claimed.some((prefix) => source.startsWith(prefix))) continue;
+        if (model.modules.some((m) => ownsSource(m, source))) continue;
         // Exempt code is deliberately outside the architecture; asking a module
         // to claim it would defeat the point of exempting it.
         if (isExempt(source)) continue;
