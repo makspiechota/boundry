@@ -398,6 +398,23 @@ export interface DiffOutcome {
   rendered: Record<string, RenderedView>;
 }
 
+/** Re-read a workspace through LikeC4 and lay every view out, keyed by view id. */
+async function layoutViews(workDir: string): Promise<Record<string, RenderedView>> {
+  const rendered: Record<string, RenderedView> = {};
+  const likec4: any = await LikeC4.fromWorkspace(workDir);
+  for (const d of await likec4.diagrams()) {
+    rendered[d.id] = {
+      nodes: (d.nodes ?? []).map((n: any) => ({ id: n.id, color: n.color })),
+      edges: (d.edges ?? []).map((e: any) => ({
+        id: `${e.source}->${e.target}`,
+        color: e.color,
+        line: e.line,
+      })),
+    };
+  }
+  return rendered;
+}
+
 /**
  * Emit diff views for a marked diagram (on a throwaway copy so the fixture stays
  * pristine), then re-read AND lay out the workspace through LikeC4 so a test can
@@ -413,19 +430,39 @@ export function emittingDiffViews(): (given: DiffGiven) => Promise<DiffOutcome> 
     const diffFile = join(workDir, "boundry.diff.likec4");
     const file = existsSync(diffFile) ? readFileSync(diffFile, "utf8") : null;
 
-    const rendered: Record<string, RenderedView> = {};
-    const likec4: any = await LikeC4.fromWorkspace(workDir);
-    for (const d of await likec4.diagrams()) {
-      rendered[d.id] = {
-        nodes: (d.nodes ?? []).map((n: any) => ({ id: n.id, color: n.color })),
-        edges: (d.edges ?? []).map((e: any) => ({
-          id: `${e.source}->${e.target}`,
-          color: e.color,
-          line: e.line,
-        })),
-      };
-    }
-    return { file, views, rendered };
+    return { file, views, rendered: await layoutViews(workDir) };
+  };
+}
+
+/**
+ * Paint intrinsic style on a marked diagram (throwaway copy), then re-read AND
+ * lay out the workspace, so a test can assert the markers are coloured in a
+ * *base* view — the surface the diff views' view-scoped rules cannot reach.
+ * Returned as a DiffOutcome so the `viewColors*` assertions apply directly.
+ */
+export function stylingThenRendering(): (given: DiffGiven) => Promise<DiffOutcome> {
+  return async ({ archPath }) => {
+    const workDir = mkdtempSync(join(tmpdir(), "boundry-style-"));
+    cpSync(resolve(archPath), workDir, { recursive: true });
+    await new LikeC4Visualizer(workDir).styleMarkers();
+    const file = readFileSync(join(workDir, "architecture.likec4"), "utf8");
+    return { file, views: [], rendered: await layoutViews(workDir) };
+  };
+}
+
+/**
+ * Paint intrinsic style, then approve — on a throwaway copy — and return the
+ * resulting source, so a test can prove approve strips BOTH the marker and the
+ * injected styling (edges back to bare, boxes permanent and clean, deletions gone).
+ */
+export function stylingThenApproving(): (given: DiffGiven) => Promise<string> {
+  return async ({ archPath }) => {
+    const workDir = mkdtempSync(join(tmpdir(), "boundry-style-approve-"));
+    cpSync(resolve(archPath), workDir, { recursive: true });
+    const visualizer = new LikeC4Visualizer(workDir);
+    await visualizer.styleMarkers();
+    await visualizer.approve();
+    return readFileSync(join(workDir, "architecture.likec4"), "utf8");
   };
 }
 

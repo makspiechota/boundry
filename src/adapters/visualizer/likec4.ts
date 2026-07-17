@@ -202,14 +202,105 @@ function statementRemovalRange(statement: any, text: string): TextRange {
   return { start: lineStart, end: nl === -1 ? text.length : nl + 1 };
 }
 
+/** amber for `#proposed`, red for `#proposal-delete` — the intrinsic colour annotate paints. */
+const MARKER_COLOR: Record<string, string> = {
+  '#proposed': 'amber',
+  '#proposal-delete': 'red',
+};
+
+/** The canonical intrinsic style annotate injects for a colour. */
+function canonicalStyle(color: string): string {
+  return `style { color ${color} }`;
+}
+
+/** The direct `*Body` child (ElementBody / RelationBody) of a statement, if any. */
+function statementBody(stmt: any): any {
+  for (const key of Object.keys(stmt)) {
+    if (key.startsWith('$')) continue;
+    const child = stmt[key];
+    for (const kid of Array.isArray(child) ? child : [child]) {
+      if (
+        kid && typeof kid === 'object' && kid.$container === stmt &&
+        typeof kid.$type === 'string' && kid.$type.endsWith('Body')
+      ) {
+        return kid;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The direct `*StyleProperty` children of a body. */
+function styleProperties(body: any): any[] {
+  const out: any[] = [];
+  for (const key of Object.keys(body)) {
+    if (key.startsWith('$')) continue;
+    const child = body[key];
+    for (const kid of Array.isArray(child) ? child : [child]) {
+      if (
+        kid && typeof kid === 'object' && kid.$container === body &&
+        typeof kid.$type === 'string' && kid.$type.endsWith('StyleProperty')
+      ) {
+        out.push(kid);
+      }
+    }
+  }
+  return out;
+}
+
 /**
- * Every source range to splice out to approve a diagram: a `#proposed` marker
- * strips to its token (the edge/box stays and becomes permanent); a
- * `#proposal-delete` marker takes its whole enclosing statement (the edge/box is
- * removed). Ranges are collected via a containment-only walk — descending solely
- * into true children (`child.$container === node`), never cross-references — so
- * one marker is never counted through another element's reference to it, and no
- * range ever escapes into a different document's text.
+ * The style node in `body` whose source is EXACTLY the canonical `style { color
+ * <c> }` annotate writes — matched by whitespace-normalised text, so a richer
+ * user-authored style (`style { color amber; icon none }`) is never mistaken for
+ * ours and never stripped.
+ */
+function canonicalStyleNode(body: any, color: string, text: string): any {
+  const want = canonicalStyle(color);
+  return styleProperties(body).find(
+    (s) =>
+      s.$cstNode &&
+      text.slice(s.$cstNode.offset, s.$cstNode.end).replace(/\s+/g, ' ').trim() === want,
+  );
+}
+
+/** True when `node` is the body's only property — nothing else would survive removing it. */
+function bodyHasOnly(body: any, node: any): boolean {
+  for (const key of Object.keys(body)) {
+    if (key.startsWith('$')) continue;
+    const child = body[key];
+    for (const kid of Array.isArray(child) ? child : [child]) {
+      if (kid && typeof kid === 'object' && kid.$container === body && kid !== node) return false;
+    }
+  }
+  return true;
+}
+
+/** A node's whole line, trailing newline included — for stripping a box's style line. */
+function lineRemovalRange(node: any, text: string): TextRange {
+  const { offset, end } = node.$cstNode;
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  const nl = text.indexOf('\n', end);
+  return { start: lineStart, end: nl === -1 ? text.length : nl + 1 };
+}
+
+/** A relation body in full, plus the whitespace before its `{` — turns `a -> b { … }` back into `a -> b`. */
+function bodyRemovalRange(body: any, text: string): TextRange {
+  let start = body.$cstNode.offset;
+  while (start > 0 && (text[start - 1] === ' ' || text[start - 1] === '\t')) start--;
+  return { start, end: body.$cstNode.end };
+}
+
+/**
+ * Every source range to splice out to approve a diagram. A `#proposed` marker
+ * strips to its token (the edge/box stays and becomes permanent) AND takes with
+ * it any intrinsic `style { color amber }` annotate painted on — for a box, that
+ * style's line; for an edge, its whole (now-empty) body, so the edge goes back to
+ * bare. A `#proposal-delete` marker takes its whole enclosing statement (the
+ * edge/box, and any style on it, are removed outright). Ranges are collected via
+ * a containment-only walk — descending solely into true children
+ * (`child.$container === node`), never cross-references — so one marker is never
+ * counted through another element's reference to it, and no range ever escapes
+ * into a different document's text.
  */
 function collectApprovalRanges(root: any, text: string): TextRange[] {
   const ranges: TextRange[] = [];
@@ -217,6 +308,18 @@ function collectApprovalRanges(root: any, text: string): TextRange[] {
     const marker = tagRefText(node, text);
     if (marker === '#proposed') {
       ranges.push(proposedRemovalRange(node, text));
+      // Strip the intrinsic amber style annotate paints, so an approved box does
+      // not stay amber forever and an approved edge goes back to bare.
+      const statement = enclosingStatement(node);
+      const body = statement && statementBody(statement);
+      const style = body && canonicalStyleNode(body, MARKER_COLOR['#proposed'], text);
+      if (style) {
+        if (statement.$type === 'Relation' && bodyHasOnly(body, style)) {
+          ranges.push(bodyRemovalRange(body, text));
+        } else {
+          ranges.push(lineRemovalRange(style, text));
+        }
+      }
     } else if (marker === '#proposal-delete') {
       const statement = enclosingStatement(node);
       if (statement?.$cstNode) ranges.push(statementRemovalRange(statement, text));
@@ -388,6 +491,66 @@ export class LikeC4Visualizer implements VisualizerPort {
               inserts.push({ at: afterBrace, text: `\n${indent}#proposed` });
             }
           }
+        }
+      });
+      if (inserts.length === 0) continue;
+
+      let next = text;
+      for (const { at, text: fragment } of inserts.sort((a, b) => b.at - a.at)) {
+        next = next.slice(0, at) + fragment + next.slice(at);
+      }
+      writeFileSync(filePath, next);
+    }
+  }
+
+  /**
+   * Paint intrinsic style on every marked edge and box, so a proposal is
+   * highlighted on *every* LikeC4 surface — base views and the "relationships of
+   * X" panel, not just the generated diff views (which only carry view-scoped
+   * rules). A `#proposed` edge/box gets `style { color amber }`, a
+   * `#proposal-delete` `style { color red }`. Source-preserving and idempotent —
+   * anything already carrying the canonical style is left alone. `approve` strips
+   * this styling back out when it enacts the marker.
+   */
+  async styleMarkers(): Promise<void> {
+    const likec4: any = await LikeC4.fromWorkspace(this.workspaceDir);
+    for (const doc of likec4.LangiumDocuments.all) {
+      const filePath: string = doc.uri.fsPath;
+      if (!filePath.endsWith('.likec4') || filePath.endsWith(DIFF_FILE)) continue;
+      const text: string = doc.textDocument?.getText?.() ?? readFileSync(filePath, 'utf8');
+
+      const inserts: { at: number; text: string }[] = [];
+      walkContained(doc.parseResult?.value, (node) => {
+        const marker = tagRefText(node, text);
+        if (marker !== '#proposed' && marker !== '#proposal-delete') return;
+        const color = MARKER_COLOR[marker];
+        const statement = enclosingStatement(node);
+        if (!statement) return;
+
+        const body = statementBody(statement);
+        if (body && canonicalStyleNode(body, color, text)) return; // already styled
+
+        if (body?.$cstNode) {
+          // Style on the line right after the marker, at the marker's indent. It
+          // must go AFTER the marker: a body lists its tags before its style
+          // properties, so a style ahead of the `#proposed` tag is a parse error.
+          const markerEnd = node.$cstNode.end;
+          const lineStart = text.lastIndexOf('\n', markerEnd - 1) + 1;
+          const indent = (text.slice(lineStart).match(/^[ \t]*/) ?? [''])[0];
+          const nl = text.indexOf('\n', markerEnd);
+          inserts.push({
+            at: nl === -1 ? markerEnd : nl,
+            text: `\n${indent}${canonicalStyle(color)}`,
+          });
+        } else {
+          // An inline-marked edge (`a -> b #proposed`) has no body — give it one,
+          // indented one level past the relation's own line.
+          const lineStart = text.lastIndexOf('\n', statement.$cstNode.offset - 1) + 1;
+          const indent = (text.slice(lineStart).match(/^[ \t]*/) ?? [''])[0];
+          inserts.push({
+            at: statement.$cstNode.end,
+            text: ` {\n${indent}  ${canonicalStyle(color)}\n${indent}}`,
+          });
         }
       });
       if (inserts.length === 0) continue;

@@ -277,6 +277,16 @@ red-again check and a highlighted box on the diagram, awaiting a real approval. 
 handles additions only; a removal is reported, not re-drawn (re-adding a deleted
 box would resurrect it as an enforced module).
 
+It also **paints the markers** — every `#proposed` edge/box gets an intrinsic
+`style { color amber }`, every `#proposal-delete` a `style { color red }`, written
+onto the element itself. Intrinsic style is the one styling LikeC4 renders on
+*every* surface — base views **and the "relationships of X" panel** — so a
+proposal shows up highlighted wherever a reviewer looks, not only in the generated
+diff views (whose view-scoped rules stop at the view boundary). `approve` strips
+this styling back out with the marker: a `#proposed` edge returns to bare, a
+`#proposed` box stays but loses its colour, a `#proposal-delete` is removed
+outright. Requires **LikeC4 ≥ 1.58** to render.
+
 ### Reviewing a proposal — per-layer diff views (prototype)
 
 A proposal nested inside a box is invisible at a wider zoom: at the top level the

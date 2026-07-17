@@ -21,6 +21,15 @@ model" promise hold for deep, nested C4 trees.
   colourable proposal. (Additive only; deletions are reported, not round-tripped
   back into the DSL — re-materialising a removed box would resurrect it as an
   enforced module.)
+  - **Cross-surface highlighting** ([#5]). `annotate` also paints each marker with
+    an intrinsic `style { color amber }` (`#proposed`) / `style { color red }`
+    (`#proposal-delete`) on the element itself. Intrinsic style is the only styling
+    LikeC4 renders on **every** surface — base views *and* the "relationships of X"
+    panel — so a proposal is highlighted wherever a reviewer looks, not just inside
+    the diff views (whose view-scoped rules stop at the view boundary). Idempotent,
+    and `approve` strips the styling back out with the marker: a `#proposed` edge
+    returns to bare, a `#proposed` box loses its colour, a `#proposal-delete` is
+    removed outright. Needs LikeC4 ≥ 1.58 to render.
 - **Per-layer diff views — `boundry diff` (prototype).** Generates a focused
   LikeC4 view for every layer that holds a pending change — an edge or box tagged
   `#proposed` or `#proposal-delete` — scoped to the tightest element that draws
@@ -67,6 +76,7 @@ model" promise hold for deep, nested C4 trees.
 
 [#3]: https://github.com/makspiechota/boundry/issues/3
 [#4]: https://github.com/makspiechota/boundry/issues/4
+[#5]: https://github.com/makspiechota/boundry/issues/5
 
 ## [0.2.0] — 2026-07-16
 

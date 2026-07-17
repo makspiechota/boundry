@@ -85,8 +85,10 @@ export class Pipeline {
   /**
    * Compare the diagram against a previously accepted lock and rewrite every
    * undeclared addition — a bare new edge (a self-grant) or box — into an
-   * explicit `#proposed` proposal in the source. Turns silent drift into a
-   * reviewable, colourable proposal without trusting git for the baseline.
+   * explicit `#proposed` proposal in the source, then paints intrinsic styling on
+   * every marker so the proposal is highlighted on every LikeC4 surface. Turns
+   * silent drift into a reviewable, colourable proposal without trusting git for
+   * the baseline.
    */
   async annotate(lock: string): Promise<AnnotateResult> {
     const accepted = parseModel(lock);
@@ -94,6 +96,7 @@ export class Pipeline {
     const edges = newlyAllowedEdges(accepted, head);
     const modules = newlyAddedModules(accepted, head);
     await this.visualizer.propose(edges, modules.map((m) => m.id));
+    await this.visualizer.styleMarkers();
     return { edges, modules };
   }
 

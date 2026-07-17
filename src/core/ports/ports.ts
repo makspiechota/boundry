@@ -16,6 +16,14 @@ export interface VisualizerPort {
    */
   propose(edges: AllowedEdge[], moduleIds: string[]): Promise<void>;
   /**
+   * Paint intrinsic `style { color … }` on every edge/box carrying a marker, so a
+   * proposal is highlighted on every LikeC4 surface — base views and the
+   * relationships panel, not only the generated diff views. Amber for `#proposed`,
+   * red for `#proposal-delete`. Idempotent; `approve` strips it back out.
+   * Source-preserving; never an LLM edit.
+   */
+  styleMarkers(): Promise<void>;
+  /**
    * (Re)generate a focused diff view for every layer that holds a pending
    * change — an edge or box tagged `#proposed` or `#proposal-delete`. Each view
    * is scoped to the tightest element that contains the change (the model root

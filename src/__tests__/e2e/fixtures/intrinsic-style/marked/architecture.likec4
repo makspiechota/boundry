@@ -5,6 +5,9 @@ specification {
   tag proposed {
     color #f59e0b
   }
+  tag proposal-delete {
+    color #ef4444
+  }
 }
 
 model {
@@ -14,14 +17,18 @@ model {
   module domain 'Domain' {
     metadata { folder 'src/domain' }
   }
+  module reporting 'Reporting' {
+    #proposed
+    metadata { folder 'src/reporting' }
+  }
   module legacy 'Legacy' {
+    #proposal-delete
     metadata { folder 'src/legacy' }
   }
 
   api -> domain
-  api -> legacy #proposed {
-    style { color amber }
-  }
+  api -> reporting #proposed
+  api -> legacy #proposal-delete
 }
 
 views {

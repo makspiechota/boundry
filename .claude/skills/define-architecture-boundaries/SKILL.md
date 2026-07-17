@@ -212,6 +212,10 @@ box, and an edge left pointing at a deleted box makes the diagram invalid.
 - **Never hand-edit `boundry.diff.likec4`.** It is a derived review artifact that
   `boundry diff` overwrites from the diagram's markers. Edit `architecture.likec4`
   and regenerate; changes made in the diff file are lost and enforce nothing.
+- **Never hand-add a `style { color … }` to a marked edge or box.** Add the marker
+  only; `boundry annotate` paints the amber/red styling deterministically and
+  `boundry approve` strips it back out. Hand-styling either drifts from that
+  convention or survives approval as a permanent colour.
 - **Never route around a boundary through a new folder.** Creating
   `src/shared-utils/` and importing it, so the blocked dependency travels via
   unmodelled code, is the same bypass wearing a disguise. Where a `governRoot`
