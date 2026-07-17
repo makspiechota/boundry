@@ -56,7 +56,7 @@
   },
   "dependencies": {
     "dependency-cruiser": "^16.4.0",
-    "likec4": "^1.46.0",
+    "likec4": "^1.58.0",
     "typescript": "^5.6.0"
   },
   "devDependencies": {

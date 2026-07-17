@@ -27,10 +27,17 @@ model" promise hold for deep, nested C4 trees.
   it, into a derived `boundry.diff.likec4`. This matters because a proposal nested
   inside a box is invisible once that box collapses at a wider zoom, so a single
   all-up view hides it; one view per layer surfaces every change in the scope
-  where it renders (amber for additions, red for removals). It reads the diagram's
-  own markers, not the lock, so it frames whatever `annotate` or a human marked.
-  The file is derived — overwritten each run, removed when nothing is proposed —
-  so it always reflects the current diagram; regenerate after `approve`.
+  where it renders. It reads the diagram's own markers, not the lock, so it frames
+  whatever `annotate` or a human marked. The file is derived — overwritten each
+  run, removed when nothing is proposed — so it always reflects the current
+  diagram; regenerate after `approve`.
+  - **Deterministic highlighting** ([#4]). `diff` emits the LikeC4 style rules
+    into the derived file, so a `#proposed` box fills amber and its edge goes
+    amber + solid, a `#proposal-delete` red — with no hand-styling. Boxes are
+    styled in place (`style element.tag`, never force-included), so a nested
+    proposal stays in its layer; the rules live only in the generated views, so
+    user-authored views are untouched. Rules are emitted only for marker tags
+    actually in use (referencing an undeclared tag is a hard LikeC4 error).
 - **`#proposal-delete` — the deletion half of the approval lifecycle.** Tag an
   edge or a box `#proposal-delete` to propose retiring it. The marker colours it
   red; a pending deletion changes nothing (the edge stays allowed, the box stays
@@ -54,8 +61,12 @@ model" promise hold for deep, nested C4 trees.
 
 - **`Module.folder: string` → `Module.path: string` + `Module.kind: 'folder' | 'file'`.**
   SDK-breaking; the diagram surface and CLI are unaffected.
+- **`likec4` floor raised to `^1.58.0`.** The diff-view style-rule syntax Boundry
+  emits is verified against LikeC4 1.58; rendering the coloured views needs a
+  renderer at least that new.
 
 [#3]: https://github.com/makspiechota/boundry/issues/3
+[#4]: https://github.com/makspiechota/boundry/issues/4
 
 ## [0.2.0] — 2026-07-16
 

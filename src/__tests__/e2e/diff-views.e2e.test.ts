@@ -4,8 +4,10 @@ import {
   matchesDiffFile,
   emitsLayers,
   emitsNothing,
-  viewDraws,
   viewOmits,
+  viewColorsEdge,
+  viewColorsNode,
+  viewIsUnhighlighted,
   type DiffGiven,
   type DiffOutcome,
   type Scenario,
@@ -33,22 +35,46 @@ testE2E([emitsAViewPerChangedLayer]);
 
 // The point of per-layer views: a proposal nested inside billing is only drawn
 // in billing's own view. At root, billing collapses to one box and the inner
-// #proposed edge vanishes — so a single all-up view would hide it.
-const nestedProposalIsVisibleOnlyInItsLayer: Scenario<DiffGiven, DiffOutcome> = {
-  name: "diff · a nested proposal is drawn in its layer's view, not the collapsed root",
+// #proposed edge vanishes — so a single all-up view would hide it. And the
+// highlighting is deterministic: amber+solid for additions, red+solid for
+// removals, resolved by the emitted style rules (no hand-styling).
+const nestedProposalIsColouredOnlyInItsLayer: Scenario<DiffGiven, DiffOutcome> = {
+  name: "diff · a nested proposal is coloured in its layer's view, not the collapsed root",
   given: { archPath: `${FIXTURES}/nested` },
   when: emittingDiffViews(),
   then: (outcome) => {
-    // billing's view draws the amber proposed edge...
-    viewDraws("boundry_diff_billing", "billing.invoicer->billing.ledger[proposed]")(outcome);
-    // ...and the root view draws the red proposed removal...
-    viewDraws("boundry_diff_root", "api->billing[proposal-delete]")(outcome);
-    // ...but the root view cannot show the inner edge (billing is collapsed there).
+    // billing's view colours the proposed edge amber + solid...
+    viewColorsEdge("boundry_diff_billing", "billing.invoicer->billing.ledger", "amber", "solid")(outcome);
+    // ...the root view colours the proposed removal red + solid...
+    viewColorsEdge("boundry_diff_root", "api->billing", "red", "solid")(outcome);
+    // ...but the root view cannot show the inner edge (billing is collapsed there)...
     viewOmits("boundry_diff_root", "billing.invoicer->billing.ledger")(outcome);
+    // ...and the user's own view is left completely untouched — no colour leak.
+    viewIsUnhighlighted("index")(outcome);
   },
 };
 
-testE2E([nestedProposalIsVisibleOnlyInItsLayer]);
+testE2E([nestedProposalIsColouredOnlyInItsLayer]);
+
+// Boxes, not just edges: a #proposed box fills amber, a #proposal-delete box
+// fills red, deterministically — while unchanged boxes and edges keep their
+// defaults. This is the seam issue #4 closes: colouring with no inline styling.
+const proposedAndDeletedBoxesAreFilled: Scenario<DiffGiven, DiffOutcome> = {
+  name: "diff · proposed / proposal-delete boxes are filled amber / red",
+  given: { archPath: `${FIXTURES}/boxes` },
+  when: emittingDiffViews(),
+  then: (outcome) => {
+    viewColorsNode("boundry_diff_root", "reporting", "amber")(outcome); // #proposed box
+    viewColorsNode("boundry_diff_root", "legacy", "red")(outcome); // #proposal-delete box
+    viewColorsEdge("boundry_diff_root", "api->reporting", "amber", "solid")(outcome); // #proposed edge
+    // Unchanged neighbours keep the defaults — highlighting is targeted.
+    viewColorsNode("boundry_diff_root", "domain", "primary")(outcome);
+    viewColorsEdge("boundry_diff_root", "api->domain", "gray", "dashed")(outcome);
+    viewIsUnhighlighted("index")(outcome);
+  },
+};
+
+testE2E([proposedAndDeletedBoxesAreFilled]);
 
 // Nothing proposed: no diff file is written.
 const cleanDiagramEmitsNoViews: Scenario<DiffGiven, DiffOutcome> = {

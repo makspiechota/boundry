@@ -1,0 +1,37 @@
+specification {
+  element module {
+    style { shape rectangle }
+  }
+  tag proposed {
+    color #f59e0b
+  }
+  tag proposal-delete {
+    color #ef4444
+  }
+}
+
+model {
+  module api 'API' {
+    metadata { folder 'src/api' }
+  }
+  module domain 'Domain' {
+    metadata { folder 'src/domain' }
+  }
+  module reporting 'Reporting' {
+    #proposed
+    metadata { folder 'src/reporting' }
+  }
+  module legacy 'Legacy' {
+    #proposal-delete
+    metadata { folder 'src/legacy' }
+  }
+
+  api -> domain
+  api -> reporting #proposed
+}
+
+views {
+  view index {
+    include *
+  }
+}

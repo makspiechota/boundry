@@ -4,9 +4,17 @@ views {
   view boundry_diff_root {
     title 'Boundry diff · root'
     include *
+    style element.tag = #proposed { color amber }
+    style element.tag = #proposal-delete { color red }
+    include * -> * where tag is #proposed with { color amber; line solid }
+    include * -> * where tag is #proposal-delete with { color red; line solid }
   }
   view boundry_diff_billing of billing {
     title 'Boundry diff · billing'
     include *
+    style element.tag = #proposed { color amber }
+    style element.tag = #proposal-delete { color red }
+    include * -> * where tag is #proposed with { color amber; line solid }
+    include * -> * where tag is #proposal-delete with { color red; line solid }
   }
 }

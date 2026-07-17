@@ -377,23 +377,31 @@ export interface DiffGiven {
   archPath: string;
 }
 
+/** A laid-out view, keyed by id: nodes and edges with their resolved styling. */
+export interface RenderedView {
+  nodes: { id: string; color: string }[];
+  /** `id` is `from->to`; `color`/`line` are the resolved edge styling. */
+  edges: { id: string; color: string; line: string }[];
+}
+
 export interface DiffOutcome {
   /** The generated boundry.diff.likec4 content, or null if none was written. */
   file: string | null;
   /** The summary emitDiffViews returned — one entry per layer. */
   views: DiffView[];
   /**
-   * The workspace re-read through LikeC4 after emitting, keyed by view id: proof
-   * the generated views actually load and draw the changes in the right scope.
-   * Each edge is rendered `from->to[tags]`, each node `id[tags]`.
+   * The workspace re-read through LikeC4 AND LAID OUT after emitting, keyed by
+   * view id — so a test can assert not just that a change is drawn in the right
+   * layer, but that it is actually coloured. Colours resolve only in the laid-out
+   * diagram (`diagrams()`), never in the computed model.
    */
-  rendered: Record<string, { nodes: string[]; edges: string[] }>;
+  rendered: Record<string, RenderedView>;
 }
 
 /**
  * Emit diff views for a marked diagram (on a throwaway copy so the fixture stays
- * pristine), then re-read the workspace through LikeC4 so a test can assert both
- * the generated source and that each view renders its layer's changes.
+ * pristine), then re-read AND lay out the workspace through LikeC4 so a test can
+ * assert both the generated source and that each view colours its layer's changes.
  */
 export function emittingDiffViews(): (given: DiffGiven) => Promise<DiffOutcome> {
   return async ({ archPath }) => {
@@ -405,18 +413,16 @@ export function emittingDiffViews(): (given: DiffGiven) => Promise<DiffOutcome> 
     const diffFile = join(workDir, "boundry.diff.likec4");
     const file = existsSync(diffFile) ? readFileSync(diffFile, "utf8") : null;
 
-    const rendered: Record<string, { nodes: string[]; edges: string[] }> = {};
+    const rendered: Record<string, RenderedView> = {};
     const likec4: any = await LikeC4.fromWorkspace(workDir);
-    const model = await likec4.computedModel();
-    for (const v of model.views()) {
-      rendered[v.id] = {
-        nodes: [...v.nodes()].map(
-          (n: any) => `${n.id}${n.tags?.length ? `[${n.tags.join(",")}]` : ""}`
-        ),
-        edges: [...v.edges()].map(
-          (e: any) =>
-            `${e.source.id}->${e.target.id}${e.tags?.length ? `[${e.tags.join(",")}]` : ""}`
-        ),
+    for (const d of await likec4.diagrams()) {
+      rendered[d.id] = {
+        nodes: (d.nodes ?? []).map((n: any) => ({ id: n.id, color: n.color })),
+        edges: (d.edges ?? []).map((e: any) => ({
+          id: `${e.source}->${e.target}`,
+          color: e.color,
+          line: e.line,
+        })),
       };
     }
     return { file, views, rendered };
@@ -459,33 +465,82 @@ export function emitsNothing(outcome: DiffOutcome): void {
   );
 }
 
-/** Assertion: the named view draws something matching `needle` (e.g. `invoicer->ledger[proposed]`). */
+const viewOf = (rendered: Record<string, RenderedView>, viewId: string): RenderedView => {
+  const view = rendered[viewId];
+  assert.ok(view, `expected a rendered view '${viewId}', got: ${Object.keys(rendered).join(", ")}`);
+  return view;
+};
+
+/** Assertion: the named view draws the given node or edge id (structural presence). */
 export function viewDraws(
   viewId: string,
-  needle: string
+  id: string
 ): (outcome: DiffOutcome) => void {
   return ({ rendered }) => {
-    const view = rendered[viewId];
-    assert.ok(view, `expected a rendered view '${viewId}', got: ${Object.keys(rendered).join(", ")}`);
-    const drawn = [...view.nodes, ...view.edges];
+    const view = viewOf(rendered, viewId);
+    const drawn = [...view.nodes.map((n) => n.id), ...view.edges.map((e) => e.id)];
     assert.ok(
-      drawn.some((d) => d.includes(needle)),
-      `expected view '${viewId}' to draw '${needle}', got: ${drawn.join(" ")}`
+      drawn.includes(id),
+      `expected view '${viewId}' to draw '${id}', got: ${drawn.join(" ")}`
     );
   };
 }
 
-/** Assertion: the named view does NOT draw an edge matching `needle` (it belongs to a deeper layer). */
+/** Assertion: the named view does NOT draw the given edge id (it belongs to a deeper layer). */
 export function viewOmits(
   viewId: string,
-  needle: string
+  edgeId: string
 ): (outcome: DiffOutcome) => void {
   return ({ rendered }) => {
-    const view = rendered[viewId];
-    assert.ok(view, `expected a rendered view '${viewId}', got: ${Object.keys(rendered).join(", ")}`);
+    const view = viewOf(rendered, viewId);
     assert.ok(
-      !view.edges.some((e) => e.includes(needle)),
-      `expected view '${viewId}' to omit '${needle}', but it drew it`
+      !view.edges.some((e) => e.id === edgeId),
+      `expected view '${viewId}' to omit edge '${edgeId}', but it drew it`
     );
+  };
+}
+
+/** Assertion: in the named view, this edge resolves to the given colour (and line, if given). */
+export function viewColorsEdge(
+  viewId: string,
+  edgeId: string,
+  color: string,
+  line?: string
+): (outcome: DiffOutcome) => void {
+  return ({ rendered }) => {
+    const view = viewOf(rendered, viewId);
+    const edge = view.edges.find((e) => e.id === edgeId);
+    assert.ok(edge, `expected edge '${edgeId}' in '${viewId}', got: ${view.edges.map((e) => e.id).join(", ")}`);
+    assert.equal(edge.color, color, `edge '${edgeId}' colour in '${viewId}'`);
+    if (line !== undefined) assert.equal(edge.line, line, `edge '${edgeId}' line in '${viewId}'`);
+  };
+}
+
+/** Assertion: in the named view, this box resolves to the given fill colour. */
+export function viewColorsNode(
+  viewId: string,
+  nodeId: string,
+  color: string
+): (outcome: DiffOutcome) => void {
+  return ({ rendered }) => {
+    const view = viewOf(rendered, viewId);
+    const node = view.nodes.find((n) => n.id === nodeId);
+    assert.ok(node, `expected box '${nodeId}' in '${viewId}', got: ${view.nodes.map((n) => n.id).join(", ")}`);
+    assert.equal(node.color, color, `box '${nodeId}' colour in '${viewId}'`);
+  };
+}
+
+/**
+ * Assertion: the named view carries no highlighting at all — every box is the
+ * default `primary`, every edge the default `gray`. Proves a user-authored view
+ * is left untouched (the diff styling never leaks out of the generated views).
+ */
+export function viewIsUnhighlighted(viewId: string): (outcome: DiffOutcome) => void {
+  return ({ rendered }) => {
+    const view = viewOf(rendered, viewId);
+    const paintedNodes = view.nodes.filter((n) => n.color !== "primary").map((n) => n.id);
+    assert.deepEqual(paintedNodes, [], `expected '${viewId}' to have no coloured boxes, got: ${paintedNodes.join(", ")}`);
+    const paintedEdges = view.edges.filter((e) => e.color !== "gray").map((e) => e.id);
+    assert.deepEqual(paintedEdges, [], `expected '${viewId}' to have no coloured edges, got: ${paintedEdges.join(", ")}`);
   };
 }

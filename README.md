@@ -289,12 +289,23 @@ boundry diff --arch arch              # (re)write boundry.diff.likec4
 likec4 serve arch                     # review each layer, changes coloured
 ```
 
-Each `#proposed` edge/box renders amber and each `#proposal-delete` red, in the
-scope where it's drawn. The file is a **derived artifact**: overwritten every run,
-removed when nothing is proposed, so it always matches the current diagram —
-regenerate it after `approve`. It reads the diagram's own markers (not the lock),
-so it frames whatever `annotate` or a human has marked. Being derived, it's a
-`.gitignore` candidate (`boundry.diff.likec4`).
+The highlighting is **generated, not hand-styled** — `diff` emits the LikeC4
+style rules into the derived file, so every `#proposed` box fills amber and edge
+goes amber + solid, every `#proposal-delete` red, deterministically. That closes
+the last manual seam: `annotate` marks, `diff` colours, no agent-dependent
+styling step. Boxes are styled *in place* (never force-included), so a nested
+proposal stays in its own layer; unchanged elements keep their defaults; and the
+rules live only in the generated views, so your own views are untouched.
+
+The file is a **derived artifact**: overwritten every run, removed when nothing is
+proposed, so it always matches the current diagram — regenerate it after
+`approve`. It reads the diagram's own markers (not the lock), so it frames
+whatever `annotate` or a human has marked. Being derived, it's a `.gitignore`
+candidate (`boundry.diff.likec4`).
+
+> Rendering the coloured diff views needs **LikeC4 ≥ 1.58** (the style-rule syntax
+> Boundry emits). Boundry itself depends on that floor; the tool you review with
+> (`likec4 serve`, the CLI, or the IDE extension) has to meet it too.
 
 ## CLI
 
