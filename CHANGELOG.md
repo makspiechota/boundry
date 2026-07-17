@@ -4,10 +4,11 @@ All notable changes to Boundry are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [semver](https://semver.org/).
 
-## [0.3.0] — unreleased
+## [0.4.0] — 2026-07-17
 
 Makes the "one file can be both the communication diagram and the enforcement
-model" promise hold for deep, nested C4 trees.
+model" promise hold for deep, nested C4 trees, and makes a proposed change
+highlight itself — deterministically, on every LikeC4 surface.
 
 ### Added
 
@@ -77,6 +78,12 @@ model" promise hold for deep, nested C4 trees.
 [#3]: https://github.com/makspiechota/boundry/issues/3
 [#4]: https://github.com/makspiechota/boundry/issues/4
 [#5]: https://github.com/makspiechota/boundry/issues/5
+
+## [0.3.0] — 2026-07-16 — superseded by 0.4.0
+
+Published early from a pre-feature snapshot (≈ 0.2.0 plus the `#anything`
+wildcard) and never carried the work now listed under 0.4.0. npm versions are
+immutable, so it stays on the registry; use **0.4.0**.
 
 ## [0.2.0] — 2026-07-16
 
