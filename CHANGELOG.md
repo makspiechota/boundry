@@ -21,6 +21,16 @@ model" promise hold for deep, nested C4 trees.
   colourable proposal. (Additive only; deletions are reported, not round-tripped
   back into the DSL — re-materialising a removed box would resurrect it as an
   enforced module.)
+- **Per-layer diff views — `boundry diff` (prototype).** Generates a focused
+  LikeC4 view for every layer that holds a pending change — an edge or box tagged
+  `#proposed` or `#proposal-delete` — scoped to the tightest element that draws
+  it, into a derived `boundry.diff.likec4`. This matters because a proposal nested
+  inside a box is invisible once that box collapses at a wider zoom, so a single
+  all-up view hides it; one view per layer surfaces every change in the scope
+  where it renders (amber for additions, red for removals). It reads the diagram's
+  own markers, not the lock, so it frames whatever `annotate` or a human marked.
+  The file is derived — overwritten each run, removed when nothing is proposed —
+  so it always reflects the current diagram; regenerate after `approve`.
 - **`#proposal-delete` — the deletion half of the approval lifecycle.** Tag an
   edge or a box `#proposal-delete` to propose retiring it. The marker colours it
   red; a pending deletion changes nothing (the edge stays allowed, the box stays

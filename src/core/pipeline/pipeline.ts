@@ -3,6 +3,7 @@ import type {
   EnforcerPort,
   EnforcerConfig,
   CheckResult,
+  DiffView,
 } from "../ports/ports.js";
 import type { AllowedEdge, Module } from "../model/boundary-model.js";
 import {
@@ -94,5 +95,16 @@ export class Pipeline {
     const modules = newlyAddedModules(accepted, head);
     await this.visualizer.propose(edges, modules.map((m) => m.id));
     return { edges, modules };
+  }
+
+  /**
+   * (Re)generate a focused diff view per layer that holds a pending change, so a
+   * reviewer sees each proposal in the scope where it is actually drawn — a
+   * proposal nested in a box is invisible once that box collapses at a wider
+   * view. Reads the diagram's own `#proposed` / `#proposal-delete` markers, so it
+   * composes with `annotate` (annotate marks drift, this frames it).
+   */
+  async diffViews(): Promise<DiffView[]> {
+    return this.visualizer.emitDiffViews();
   }
 }

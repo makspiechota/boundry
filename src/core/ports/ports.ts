@@ -15,6 +15,28 @@ export interface VisualizerPort {
    * marked is left alone. Source-preserving; never an LLM edit.
    */
   propose(edges: AllowedEdge[], moduleIds: string[]): Promise<void>;
+  /**
+   * (Re)generate a focused diff view for every layer that holds a pending
+   * change — an edge or box tagged `#proposed` or `#proposal-delete`. Each view
+   * is scoped to the tightest element that contains the change (the model root
+   * for a top-level one), because a proposal nested inside a box is invisible
+   * once that box collapses at a wider scope. A derived artifact: overwritten
+   * each run, and removed when nothing is proposed. Returns one entry per view.
+   */
+  emitDiffViews(): Promise<DiffView[]>;
+}
+
+/**
+ * One emitted diff view: a single layer (element scope) that holds at least one
+ * pending change, and how many changes fall in it.
+ */
+export interface DiffView {
+  /** The generated view id, e.g. `boundry_diff_root` or `boundry_diff_billing`. */
+  id: string;
+  /** The scope element's fqn, or undefined for the model root. */
+  scope?: string;
+  /** How many pending `#proposed` / `#proposal-delete` changes this layer holds. */
+  changes: number;
 }
 
 /** A generated linter config artifact. */

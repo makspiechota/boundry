@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolve, join } from "node:path";
-import { cpSync, mkdtempSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { LikeC4 } from "likec4";
 import { Pipeline } from "../../core/pipeline/pipeline.js";
 import { LikeC4Visualizer } from "../../adapters/visualizer/likec4.js";
 import { DepCruiserEnforcer } from "../../adapters/enforcer/depcruiser.js";
-import type { CheckResult } from "../../core/ports/ports.js";
+import type { CheckResult, DiffView } from "../../core/ports/ports.js";
 import type { AllowedEdge } from "../../core/model/boundary-model.js";
 import {
   newlyAllowedEdges,
@@ -365,6 +366,126 @@ export function lockOmitsEdge(from: string, to: string): (lock: string) => void 
     assert.ok(
       !allowed.some((e) => e.from === from && e.to === to),
       `expected the lock to omit ${from} -> ${to}, but it was recorded as allowed`
+    );
+  };
+}
+
+// ─── Diff views (one focused view per changed layer) ─────────────────
+
+export interface DiffGiven {
+  /** Directory holding a LikeC4 diagram carrying #proposed / #proposal-delete markers. */
+  archPath: string;
+}
+
+export interface DiffOutcome {
+  /** The generated boundry.diff.likec4 content, or null if none was written. */
+  file: string | null;
+  /** The summary emitDiffViews returned — one entry per layer. */
+  views: DiffView[];
+  /**
+   * The workspace re-read through LikeC4 after emitting, keyed by view id: proof
+   * the generated views actually load and draw the changes in the right scope.
+   * Each edge is rendered `from->to[tags]`, each node `id[tags]`.
+   */
+  rendered: Record<string, { nodes: string[]; edges: string[] }>;
+}
+
+/**
+ * Emit diff views for a marked diagram (on a throwaway copy so the fixture stays
+ * pristine), then re-read the workspace through LikeC4 so a test can assert both
+ * the generated source and that each view renders its layer's changes.
+ */
+export function emittingDiffViews(): (given: DiffGiven) => Promise<DiffOutcome> {
+  return async ({ archPath }) => {
+    const workDir = mkdtempSync(join(tmpdir(), "boundry-diff-"));
+    cpSync(resolve(archPath), workDir, { recursive: true });
+    const pipeline = new Pipeline(new LikeC4Visualizer(workDir), new DepCruiserEnforcer());
+    const views = await pipeline.diffViews();
+
+    const diffFile = join(workDir, "boundry.diff.likec4");
+    const file = existsSync(diffFile) ? readFileSync(diffFile, "utf8") : null;
+
+    const rendered: Record<string, { nodes: string[]; edges: string[] }> = {};
+    const likec4: any = await LikeC4.fromWorkspace(workDir);
+    const model = await likec4.computedModel();
+    for (const v of model.views()) {
+      rendered[v.id] = {
+        nodes: [...v.nodes()].map(
+          (n: any) => `${n.id}${n.tags?.length ? `[${n.tags.join(",")}]` : ""}`
+        ),
+        edges: [...v.edges()].map(
+          (e: any) =>
+            `${e.source.id}->${e.target.id}${e.tags?.length ? `[${e.tags.join(",")}]` : ""}`
+        ),
+      };
+    }
+    return { file, views, rendered };
+  };
+}
+
+/** Assertion: the generated diff file matches the golden byte-for-byte. */
+export function matchesDiffFile(expectedPath: string): (outcome: DiffOutcome) => void {
+  return ({ file }) => {
+    assert.notEqual(file, null, "expected a boundry.diff.likec4 to be written, got none");
+    assert.equal(
+      file,
+      readFileSync(resolve(expectedPath), "utf8"),
+      "generated diff file does not match the expected golden"
+    );
+  };
+}
+
+/** Assertion: exactly these layers were emitted, each with the given change count. */
+export function emitsLayers(
+  expected: { id: string; changes: number }[]
+): (outcome: DiffOutcome) => void {
+  return ({ views }) => {
+    const actual = views.map((v) => ({ id: v.id, changes: v.changes }));
+    assert.deepEqual(
+      actual,
+      expected,
+      `expected layers ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`
+    );
+  };
+}
+
+/** Assertion: no diff file was written (nothing was proposed). */
+export function emitsNothing(outcome: DiffOutcome): void {
+  assert.equal(outcome.file, null, "expected no diff file, but one was written");
+  assert.equal(
+    outcome.views.length,
+    0,
+    `expected no emitted views, got ${outcome.views.length}`
+  );
+}
+
+/** Assertion: the named view draws something matching `needle` (e.g. `invoicer->ledger[proposed]`). */
+export function viewDraws(
+  viewId: string,
+  needle: string
+): (outcome: DiffOutcome) => void {
+  return ({ rendered }) => {
+    const view = rendered[viewId];
+    assert.ok(view, `expected a rendered view '${viewId}', got: ${Object.keys(rendered).join(", ")}`);
+    const drawn = [...view.nodes, ...view.edges];
+    assert.ok(
+      drawn.some((d) => d.includes(needle)),
+      `expected view '${viewId}' to draw '${needle}', got: ${drawn.join(" ")}`
+    );
+  };
+}
+
+/** Assertion: the named view does NOT draw an edge matching `needle` (it belongs to a deeper layer). */
+export function viewOmits(
+  viewId: string,
+  needle: string
+): (outcome: DiffOutcome) => void {
+  return ({ rendered }) => {
+    const view = rendered[viewId];
+    assert.ok(view, `expected a rendered view '${viewId}', got: ${Object.keys(rendered).join(", ")}`);
+    assert.ok(
+      !view.edges.some((e) => e.includes(needle)),
+      `expected view '${viewId}' to omit '${needle}', but it drew it`
     );
   };
 }

@@ -209,6 +209,9 @@ box, and an edge left pointing at a deleted box makes the diagram invalid.
   a human decides that. If you believe your module needs it, propose the specific
   edge you actually want instead — `boundry verify` reports a wildcard edge as
   self-approved like any other.
+- **Never hand-edit `boundry.diff.likec4`.** It is a derived review artifact that
+  `boundry diff` overwrites from the diagram's markers. Edit `architecture.likec4`
+  and regenerate; changes made in the diff file are lost and enforce nothing.
 - **Never route around a boundary through a new folder.** Creating
   `src/shared-utils/` and importing it, so the blocked dependency travels via
   unmodelled code, is the same bypass wearing a disguise. Where a `governRoot`
@@ -233,6 +236,7 @@ boundry check   --arch <dir> [--cwd <repo>] src   # run the linter; exit 1 on an
 boundry generate --arch <dir>                     # emit the dependency-cruiser config
 boundry verify  --arch <dir> --base <git-ref>     # reject edges granted without #proposed
 boundry approve --arch <dir> --base <git-ref>     # HUMAN ONLY: strip markers = approve
+boundry diff    --arch <dir>                       # write per-layer review views of what you proposed
 ```
 
 `--arch` is the LikeC4 workspace directory (all `.likec4` files in it are

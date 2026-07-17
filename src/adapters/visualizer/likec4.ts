@@ -1,11 +1,54 @@
 import { LikeC4 } from 'likec4';
-import { readFileSync, writeFileSync } from 'node:fs';
-import type { VisualizerPort } from '../../core/ports/ports.js';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { VisualizerPort, DiffView } from '../../core/ports/ports.js';
 import type { BoundaryModel, Module, AllowedEdge } from '../../core/model/boundary-model.js';
 
 interface TextRange {
   start: number;
   end: number;
+}
+
+/** The generated, derived file holding Boundry's per-layer diff views. */
+const DIFF_FILE = 'boundry.diff.likec4';
+
+/** A model-root scope (undefined) or the fqn of the element a view is scoped to. */
+type Scope = string | undefined;
+
+/** The generated view id for a scope — `boundry_diff_root` or `boundry_diff_<fqn>`. */
+function scopeViewId(scope: Scope): string {
+  return scope ? `boundry_diff_${scope.replace(/\./g, '_')}` : 'boundry_diff_root';
+}
+
+/**
+ * The tightest layer that draws an edge between two elements: the deepest
+ * element that contains both, i.e. the common prefix of their fqns (undefined =
+ * the model root). An edge nested inside a box shows there, not at a wider scope
+ * where the box has collapsed — which is exactly why each layer needs its own view.
+ */
+function commonScope(from: string, to: string): Scope {
+  const a = from.split('.');
+  const b = to.split('.');
+  const shared: string[] = [];
+  for (let i = 0; i < Math.min(a.length, b.length) && a[i] === b[i]; i++) {
+    shared.push(a[i]);
+  }
+  return shared.length ? shared.join('.') : undefined;
+}
+
+/** The layer that draws a box: its parent element (undefined = the model root). */
+function parentScope(fqn: string): Scope {
+  const parts = fqn.split('.');
+  parts.pop();
+  return parts.length ? parts.join('.') : undefined;
+}
+
+/** One `view … { include * }` block, scoped with `of <element>` unless it is root. */
+function renderDiffView(scope: Scope): string {
+  const opener = scope
+    ? `  view ${scopeViewId(scope)} of ${scope} {`
+    : `  view ${scopeViewId(scope)} {`;
+  return `${opener}\n    title 'Boundry diff · ${scope ?? 'root'}'\n    include *\n  }`;
 }
 
 /**
@@ -325,5 +368,74 @@ export class LikeC4Visualizer implements VisualizerPort {
       }
       writeFileSync(filePath, next);
     }
+  }
+
+  /**
+   * Generate a focused diff view for every layer that holds a pending change.
+   * Walks the diagram's own `#proposed` / `#proposal-delete` markers (never the
+   * lock — a `#proposal-delete` has no lock delta), buckets each change into the
+   * tightest scope that draws it, and writes one `view … of <scope>` per bucket
+   * to a derived `boundry.diff.likec4`. The file is overwritten each run and
+   * removed when nothing is proposed, so it always reflects the current diagram.
+   */
+  async emitDiffViews(): Promise<DiffView[]> {
+    const likec4: any = await LikeC4.fromWorkspace(this.workspaceDir);
+
+    // scopeViewId -> { scope, changes } — deterministic key, so the same diagram
+    // always yields the same set of views.
+    const layers = new Map<string, { scope: Scope; changes: number }>();
+    const record = (scope: Scope): void => {
+      const key = scopeViewId(scope);
+      const layer = layers.get(key) ?? { scope, changes: 0 };
+      layer.changes += 1;
+      layers.set(key, layer);
+    };
+
+    for (const doc of likec4.LangiumDocuments.all) {
+      const filePath: string = doc.uri.fsPath;
+      if (!filePath.endsWith('.likec4') || filePath.endsWith(DIFF_FILE)) continue;
+      const text: string = doc.textDocument?.getText?.() ?? readFileSync(filePath, 'utf8');
+      walkContained(doc.parseResult?.value, (node) => {
+        const marker = tagRefText(node, text);
+        if (marker !== '#proposed' && marker !== '#proposal-delete') return;
+        const statement = enclosingStatement(node);
+        if (statement?.$type === 'Relation') {
+          const from = fqnOf(endpointElement(statement.source));
+          const to = fqnOf(endpointElement(statement.target));
+          if (from && to) record(commonScope(from, to));
+        } else if (statement?.$type === 'Element') {
+          const fqn = fqnOf(statement);
+          if (fqn) record(parentScope(fqn));
+        }
+      });
+    }
+
+    const diffPath = join(this.workspaceDir, DIFF_FILE);
+    if (layers.size === 0) {
+      // Nothing proposed — clear any stale views so `serve` never renders a diff
+      // that no longer exists (and never dangles a reference to an approved-away box).
+      if (existsSync(diffPath)) rmSync(diffPath);
+      return [];
+    }
+
+    // Root first, then by fqn, so the output is stable across runs.
+    const ordered = [...layers.values()].sort((a, b) => {
+      if (!a.scope) return -1;
+      if (!b.scope) return 1;
+      return a.scope.localeCompare(b.scope);
+    });
+    const body = ordered.map((layer) => renderDiffView(layer.scope)).join('\n');
+    writeFileSync(
+      diffPath,
+      `// Generated by \`boundry diff\` — one focused view per layer with a pending\n` +
+        `// change. Derived artifact: regenerate after approve; do not hand-edit.\n` +
+        `views {\n${body}\n}\n`,
+    );
+
+    return ordered.map((layer) => ({
+      id: scopeViewId(layer.scope),
+      scope: layer.scope,
+      changes: layer.changes,
+    }));
   }
 }

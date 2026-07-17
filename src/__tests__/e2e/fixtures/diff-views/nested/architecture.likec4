@@ -1,0 +1,37 @@
+specification {
+  element module {
+    style { shape rectangle }
+  }
+  tag proposed {
+    color #f59e0b
+  }
+  tag proposal-delete {
+    color #ef4444
+  }
+}
+
+model {
+  module billing 'Billing' {
+    metadata { folder 'src/billing' }
+    module invoicer 'Invoicer' {
+      metadata { file 'src/billing/invoicer.ts' }
+    }
+    module ledger 'Ledger' {
+      metadata { file 'src/billing/ledger.ts' }
+    }
+  }
+  module api 'API' {
+    metadata { folder 'src/api' }
+  }
+
+  // A proposed removal at the root layer (api collapses billing to one box).
+  api -> billing #proposal-delete
+  // A proposed addition nested inside billing — invisible once billing collapses.
+  invoicer -> ledger #proposed
+}
+
+views {
+  view index {
+    include *
+  }
+}

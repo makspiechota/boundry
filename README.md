@@ -277,6 +277,25 @@ red-again check and a highlighted box on the diagram, awaiting a real approval. 
 handles additions only; a removal is reported, not re-drawn (re-adding a deleted
 box would resurrect it as an enforced module).
 
+### Reviewing a proposal — per-layer diff views (prototype)
+
+A proposal nested inside a box is invisible at a wider zoom: at the top level the
+box collapses and its inner `#proposed` edge disappears. So `diff` generates a
+**focused view for every layer that holds a pending change** — the tightest scope
+that actually draws it — into a derived `boundry.diff.likec4`:
+
+```bash
+boundry diff --arch arch              # (re)write boundry.diff.likec4
+likec4 serve arch                     # review each layer, changes coloured
+```
+
+Each `#proposed` edge/box renders amber and each `#proposal-delete` red, in the
+scope where it's drawn. The file is a **derived artifact**: overwritten every run,
+removed when nothing is proposed, so it always matches the current diagram —
+regenerate it after `approve`. It reads the diagram's own markers (not the lock),
+so it frames whatever `annotate` or a human has marked. Being derived, it's a
+`.gitignore` candidate (`boundry.diff.likec4`).
+
 ## CLI
 
 ```
@@ -285,6 +304,7 @@ boundry generate [--arch <dir>] [--cwd <dir>] [--out <file>]
 boundry verify   [--arch <dir>] [--cwd <dir>] --base <git-ref>
 boundry approve  [--arch <dir>] [--cwd <dir>] [--base <git-ref>]
 boundry annotate [--arch <dir>]
+boundry diff     [--arch <dir>]
 ```
 
 | Flag | Meaning |
@@ -303,6 +323,8 @@ boundry annotate [--arch <dir>]
   writes `boundry.lock`. For humans, not agents.
 - **`annotate`** rewrites undeclared additions as `#proposed`, diffing against
   `boundry.lock`.
+- **`diff`** generates a focused, colour-coded review view per layer that holds a
+  pending change, into a derived `boundry.diff.likec4`.
 
 Boundry warns (but does not fail) when a mapped folder matches **zero** files, and
 **fails outright** when a check analysed no files at all — so a passing check can
