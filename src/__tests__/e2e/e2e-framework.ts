@@ -158,6 +158,21 @@ export function comparingArchitectures(): (
 }
 
 /**
+ * How the CLI actually verifies: lift the working diagram and compare it against
+ * the accepted `boundry.lock` beside it — the baseline `approve` records, not a
+ * git ref. Reports the edges granted without a `#proposed` marker. Takes an
+ * archPath holding both architecture.likec4 and boundry.lock (AnnotateGiven).
+ */
+export function verifyingAgainstLock(): (given: AnnotateGiven) => Promise<AllowedEdge[]> {
+  return async ({ archPath }) => {
+    const dir = resolve(archPath);
+    const pipeline = new Pipeline(new LikeC4Visualizer(dir), new DepCruiserEnforcer());
+    const lock = readFileSync(join(dir, "boundry.lock"), "utf8");
+    return (await pipeline.verify(lock)).edges;
+  };
+}
+
+/**
  * The same delta for importer exemptions. An exemption lifts whole files out of
  * every rule, so a new one is a grant and has to be as visible as a new edge.
  */
@@ -464,6 +479,69 @@ export function stylingThenApproving(): (given: DiffGiven) => Promise<string> {
     await visualizer.approve();
     return readFileSync(join(workDir, "architecture.likec4"), "utf8");
   };
+}
+
+// ─── approve clears the derived diff artifact (issue #6) ─────────────
+
+export interface ApproveDiffOutcome {
+  /** Whether `diff` wrote a boundry.diff.likec4 before approve ran. */
+  diffFileBefore: boolean;
+  /** Whether that file still exists after approve. */
+  diffFileAfter: boolean;
+  /** LikeC4 validation errors in the post-approve workspace (empty = valid). */
+  errors: string[];
+}
+
+/**
+ * The bug in #6: `diff` writes a derived boundry.diff.likec4 whose view rules
+ * *reference* the marker tags (`style element.tag = #proposed …`). `approve` used
+ * to walk that file too and splice the `#proposed` tokens out of the rules,
+ * corrupting them into invalid LikeC4 and leaving the file behind — so
+ * `likec4 validate` went red right after a successful approve. This drives the
+ * full flow on a throwaway copy and reports whether approve cleared the artifact
+ * and left a workspace that still validates.
+ */
+export function emittingDiffThenApproving(): (given: DiffGiven) => Promise<ApproveDiffOutcome> {
+  return async ({ archPath }) => {
+    const workDir = mkdtempSync(join(tmpdir(), "boundry-approve-diff-"));
+    cpSync(resolve(archPath), workDir, { recursive: true });
+
+    const pipeline = new Pipeline(new LikeC4Visualizer(workDir), new DepCruiserEnforcer());
+    await pipeline.diffViews();
+    const diffFile = join(workDir, "boundry.diff.likec4");
+    const diffFileBefore = existsSync(diffFile);
+
+    await new LikeC4Visualizer(workDir).approve();
+    const diffFileAfter = existsSync(diffFile);
+
+    const likec4: any = await LikeC4.fromWorkspace(workDir);
+    const errors: string[] = (likec4.getErrors?.() ?? []).map(
+      (e: any) => `${e.sourceFsPath ?? "?"}:${e.line ?? "?"} ${e.message ?? ""}`.trim(),
+    );
+    return { diffFileBefore, diffFileAfter, errors };
+  };
+}
+
+/**
+ * Assertion: `diff` did write the artifact, `approve` removed it, and the
+ * post-approve workspace validates clean — the exact regression in #6.
+ */
+export function approveClearsDiffAndValidates(outcome: ApproveDiffOutcome): void {
+  assert.equal(
+    outcome.diffFileBefore,
+    true,
+    "expected `diff` to have written a boundry.diff.likec4 before approve",
+  );
+  assert.equal(
+    outcome.diffFileAfter,
+    false,
+    "expected `approve` to remove the stale boundry.diff.likec4",
+  );
+  assert.deepEqual(
+    outcome.errors,
+    [],
+    `expected the post-approve workspace to validate clean, got: ${outcome.errors.join(" | ")}`,
+  );
 }
 
 /** Assertion: the generated diff file matches the golden byte-for-byte. */

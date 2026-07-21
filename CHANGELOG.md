@@ -4,6 +4,54 @@ All notable changes to Boundry are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [semver](https://semver.org/).
 
+## [0.5.0] — 2026-07-21
+
+### Fixed
+
+- **`approve` no longer leaves a stale, corrupted `boundry.diff.likec4`** ([#6]).
+  `approve` used to walk the derived diff file along with the model and splice the
+  marker tokens out of its *view rules* (`style element.tag = #proposed …`,
+  `include … where tag is #proposed`), mangling them into invalid LikeC4 — so
+  `likec4 validate` (and any `arch:verify` gate) went red immediately after a
+  successful approve, recoverable only by a separate `diff` run. `approve` now
+  skips the derived file and deletes it as part of enacting: the moment the last
+  proposal is approved those views are stale — they frame changes that are now
+  approved — so the post-approve workspace is clean and validates.
+
+### Added
+
+- **Per-altitude diff views** ([#7]). `boundry diff` now emits a focused view for
+  *every* layer that draws a changed edge, not only the common-ancestor layer. A
+  cross-system dependency between two deeply-nested leaves is drawable at each
+  endpoint's system and container as well as at the shared root; `diff` emits one
+  `view … of <scope>` for each, so a reviewer can open the change at whatever
+  altitude matters — the whole system, a specific container — instead of being
+  dropped at the noisy root view. The scopes are derived from how LikeC4's
+  `include *` actually renders: the common ancestor plus each endpoint's ancestor
+  chain down to its parent, never *above* the common ancestor (where both
+  endpoints collapse into one child and the edge becomes an undrawn self-loop) and
+  never the leaf endpoints themselves. Boxes are unchanged — one view at the box's
+  parent layer.
+
+### Changed
+
+- **`verify` now compares against the accepted `boundry.lock`, not a git ref.**
+  The lock was introduced in 0.4.0 to decouple *approved* from *committed*, but
+  `verify --base <ref>` kept re-deriving its baseline from a diagram at a git ref
+  — quietly re-coupling "accepted" to "committed", the very thing the lock exists
+  to break. `verify` now reads the lock, exactly as `annotate` does, so the two
+  share one baseline and can never disagree about what "accepted" means. It also
+  catches a committed-but-*unapproved* bare edge, which the git-ref baseline
+  silently absorbed. The `--base` flag is gone from `verify` and `approve`;
+  `approve`'s anti-laundering pre-check now runs the same lock-based gate, and the
+  first `approve` (no lock yet) bootstraps the initial accepted state. **Tradeoff,
+  by design:** the baseline is the working-tree lock, so the gate leans on
+  `approve` being a human act — the lock moves only when someone approves, which
+  is why the skill forbids agents from running it.
+
+[#6]: https://github.com/makspiechota/boundry/issues/6
+[#7]: https://github.com/makspiechota/boundry/issues/7
+
 ## [0.4.0] — 2026-07-17
 
 Makes the "one file can be both the communication diagram and the enforcement

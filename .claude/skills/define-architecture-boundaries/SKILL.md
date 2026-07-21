@@ -186,8 +186,8 @@ box, and an edge left pointing at a deleted box makes the diagram invalid.
 ### Never do these
 
 - **Never add a bare (unmarked) edge** to make a check pass. That grants
-  yourself a dependency. `boundry verify --base <ref>` compares against the
-  approved architecture and rejects any edge granted without a marker — and
+  yourself a dependency. `boundry verify` compares against the accepted
+  `boundry.lock` and rejects any edge granted without a marker — and
   `boundry approve` refuses to launder it.
 - **Never remove or edit an existing `#proposed` marker.** Stripping the marker
   *is* the approval, and approval is a human act.
@@ -238,13 +238,15 @@ box, and an edge left pointing at a deleted box makes the diagram invalid.
 ```bash
 boundry check   --arch <dir> [--cwd <repo>] src   # run the linter; exit 1 on any violation
 boundry generate --arch <dir>                     # emit the dependency-cruiser config
-boundry verify  --arch <dir> --base <git-ref>     # reject edges granted without #proposed
-boundry approve --arch <dir> --base <git-ref>     # HUMAN ONLY: strip markers = approve
+boundry verify  --arch <dir>                       # reject edges granted without #proposed (vs boundry.lock)
+boundry approve --arch <dir>                        # HUMAN ONLY: strip markers = approve, update boundry.lock
 boundry diff    --arch <dir>                       # write per-layer review views of what you proposed
 ```
 
 `--arch` is the LikeC4 workspace directory (all `.likec4` files in it are
-merged). `--cwd` is the repo root the `folder` paths resolve against.
+merged). `--cwd` is the repo root the `folder` paths resolve against. `verify`
+compares the diagram against the accepted `boundry.lock` — the baseline `approve`
+records — so it needs no git ref.
 
 The lifecycle is: **propose** (`#proposed`, check still red) → **approve** (a
 human strips the marker; the edge joins the allow-list) → **commit** (git).

@@ -1,0 +1,39 @@
+specification {
+  element module {
+    style { shape rectangle }
+  }
+  tag proposed {
+    color #f59e0b
+  }
+}
+
+model {
+  module s1 'System 1' {
+    metadata { folder 'src/s1' }
+    module c1 'Container 1' {
+      metadata { folder 'src/s1/c1' }
+      module a 'A' {
+        metadata { file 'src/s1/c1/a.ts' }
+      }
+    }
+  }
+  module s2 'System 2' {
+    metadata { folder 'src/s2' }
+    module c2 'Container 2' {
+      metadata { folder 'src/s2/c2' }
+      module b 'B' {
+        metadata { file 'src/s2/c2/b.ts' }
+      }
+    }
+  }
+
+  // A cross-system proposal between two deeply-nested leaves. It is drawable at
+  // five altitudes: root (s1 -> s2), each endpoint's system and container.
+  a -> b #proposed
+}
+
+views {
+  view index {
+    include *
+  }
+}

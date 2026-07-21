@@ -1,14 +1,12 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { Pipeline, type VerifyResult } from '../core/pipeline/pipeline.js';
 import { LikeC4Visualizer } from '../adapters/visualizer/likec4.js';
 import { DepCruiserEnforcer } from '../adapters/enforcer/depcruiser.js';
 
 const USAGE =
-  'usage: boundry <generate|check|approve|verify|annotate|diff> [--arch <dir>] [--base <git-ref>] [--cwd <dir>] [--out <file>] [sources...]';
+  'usage: boundry <generate|check|approve|verify|annotate|diff> [--arch <dir>] [--cwd <dir>] [--out <file>] [sources...]';
 
 function optValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -25,30 +23,6 @@ function positionals(args: string[]): string[] {
     out.push(args[i]);
   }
   return out;
-}
-
-/**
- * Materialize the architecture as of a git ref into a temp workspace, so the
- * previously-approved boundary model can be lifted and compared against HEAD.
- */
-function materializeArchAt(archDir: string, ref: string): string {
-  const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    cwd: archDir,
-    encoding: 'utf8',
-  }).trim();
-  const workDir = mkdtempSync(join(tmpdir(), 'boundry-base-'));
-  for (const file of readdirSync(archDir).filter((f) => f.endsWith('.likec4'))) {
-    try {
-      const content = execFileSync('git', ['show', `${ref}:${relative(gitRoot, join(archDir, file))}`], {
-        cwd: gitRoot,
-        encoding: 'utf8',
-      });
-      writeFileSync(join(workDir, file), content);
-    } catch {
-      // The file did not exist at `ref` — everything it declares is new.
-    }
-  }
-  return workDir;
 }
 
 function countGrants(granted: VerifyResult): number {
@@ -76,7 +50,6 @@ async function main(): Promise<void> {
   const archDir = resolve(optValue(rest, '--arch') ?? '.');
   const outArg = optValue(rest, '--out');
   const outFile = outArg ? resolve(outArg) : undefined;
-  const baseRef = optValue(rest, '--base');
 
   // `--cwd` lets you check a repo without cd-ing into it. `folder` metadata is
   // relative to the target repo root, so the enforcer runs from there.
@@ -84,12 +57,13 @@ async function main(): Promise<void> {
   if (cwd) process.chdir(resolve(cwd));
 
   // The accepted-state lock lives beside the diagram it locks. `approve` writes
-  // it; `annotate` reads it — the baseline Boundry owns, not one inferred from git.
+  // it; `verify` and `annotate` read it — the baseline Boundry owns, decoupled
+  // from git, so "accepted" never means merely "committed".
   const lockFile = join(archDir, 'boundry.lock');
+  const readLock = (): string | undefined =>
+    existsSync(lockFile) ? readFileSync(lockFile, 'utf8') : undefined;
 
   const pipeline = new Pipeline(new LikeC4Visualizer(archDir), new DepCruiserEnforcer());
-  const grantedSince = (ref: string) =>
-    pipeline.verify(new LikeC4Visualizer(materializeArchAt(archDir, ref)));
 
   if (command === 'generate') {
     const config = await pipeline.generate();
@@ -118,18 +92,21 @@ async function main(): Promise<void> {
   }
 
   if (command === 'verify') {
-    if (!baseRef) {
-      console.error('Boundry: verify requires --base <git-ref>');
+    const lock = readLock();
+    if (!lock) {
+      console.error(
+        `Boundry: no ${relative(process.cwd(), lockFile)} — run 'boundry approve' first to record the accepted state`,
+      );
       process.exitCode = 2;
       return;
     }
-    const granted = await grantedSince(baseRef);
+    const granted = await pipeline.verify(lock);
     if (countGrants(granted) === 0) {
-      console.log(`Boundry: ✓ nothing granted without a #proposed marker (vs ${baseRef})`);
+      console.log('Boundry: ✓ nothing granted without a #proposed marker (vs the accepted lock)');
       return;
     }
     console.error(
-      `Boundry: ✗ ${countGrants(granted)} grant(s) made without a #proposed marker (vs ${baseRef})`,
+      `Boundry: ✗ ${countGrants(granted)} grant(s) made without a #proposed marker (vs the accepted lock)`,
     );
     listGrants(granted);
     process.exitCode = 1;
@@ -138,21 +115,26 @@ async function main(): Promise<void> {
 
   if (command === 'approve') {
     // Approving must never launder an edge that skipped the proposal protocol.
-    if (baseRef) {
-      const granted = await grantedSince(baseRef);
+    // The accepted lock is the baseline: a bare edge added since the last approve
+    // is in the allow-list but not the lock, so it surfaces here; a #proposed one
+    // is excluded from the allow-list, so it passes and gets enacted below. The
+    // first approve has no lock yet — it establishes the initial accepted state.
+    const lock = readLock();
+    if (lock) {
+      const granted = await pipeline.verify(lock);
       if (countGrants(granted) > 0) {
         console.error(
-          `Boundry: ✗ refusing to approve — ${countGrants(granted)} grant(s) were made without a #proposed marker (vs ${baseRef})`,
+          `Boundry: ✗ refusing to approve — ${countGrants(granted)} grant(s) were made without a #proposed marker (vs the accepted lock)`,
         );
         listGrants(granted);
         process.exitCode = 1;
         return;
       }
     } else {
-      console.error('Boundry: ⚠ no --base given — approving without verifying that every new edge was proposed');
+      console.error('Boundry: ⚠ no boundry.lock yet — approving to record the initial accepted state');
     }
-    const lock = await pipeline.approve();
-    writeFileSync(lockFile, lock);
+    const nextLock = await pipeline.approve();
+    writeFileSync(lockFile, nextLock);
     console.log('Boundry: ✓ approved — enacted the diagram and wrote', relative(process.cwd(), lockFile));
     return;
   }

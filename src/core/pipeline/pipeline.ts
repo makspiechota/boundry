@@ -57,16 +57,23 @@ export class Pipeline {
   }
 
   /**
-   * What this diagram grants that `base` did not — dependencies added without a
-   * `#proposed` marker, and importer exemptions added. Proposals are excluded
-   * from the allow-list, so anything reported here bypassed the approval
-   * protocol.
+   * What this diagram grants that the accepted `lock` did not — dependencies
+   * added without a `#proposed` marker, and importer exemptions added. Proposals
+   * are excluded from the allow-list, so anything reported here bypassed the
+   * approval protocol.
+   *
+   * The baseline is the lock — the accepted state `approve` records — not a git
+   * ref. The lock exists precisely to decouple "accepted" from "committed", so
+   * verify reads from it, exactly as `annotate` does; the two can never disagree
+   * about what "accepted" means. It also catches a committed-but-unapproved bare
+   * edge, which re-deriving a baseline from a git ref would silently absorb.
    */
-  async verify(base: VisualizerPort): Promise<VerifyResult> {
-    const [baseModel, headModel] = await Promise.all([base.read(), this.visualizer.read()]);
+  async verify(lock: string): Promise<VerifyResult> {
+    const base = parseModel(lock);
+    const head = await this.visualizer.read();
     return {
-      edges: newlyAllowedEdges(baseModel, headModel),
-      exemptions: newlyExemptedImporters(baseModel, headModel),
+      edges: newlyAllowedEdges(base, head),
+      exemptions: newlyExemptedImporters(base, head),
     };
   }
 

@@ -227,15 +227,21 @@ deterministically, by splicing the LikeC4 CST. No model call, no reformatting:
 source-preserving, idempotent, byte-exact.
 
 ```bash
-boundry verify --arch arch --base origin/main   # any edge granted without a marker?
-boundry approve --arch arch --base origin/main  # HUMAN ONLY: strip markers = approve
+boundry verify  --arch arch   # any edge granted without a marker, vs the lock?
+boundry approve --arch arch   # HUMAN ONLY: strip markers = approve, update the lock
 ```
 
-`verify` compares against the approved diagram at a git ref and rejects edges that
-appeared *without* going through a proposal. Because proposals are excluded from
-the allow-list, the newly-allowed set is exactly the set of self-approvals — no
-diff engine required. `approve --base` runs the same gate first, so it won't
-launder a self-granted edge into an approved one.
+`verify` compares the working diagram against the accepted **`boundry.lock`** and
+rejects edges that appeared *without* going through a proposal. Because proposals
+are excluded from the allow-list, the newly-allowed set is exactly the set of
+self-approvals — no diff engine required. `approve` runs the same gate first, so
+it won't launder a self-granted edge into an approved one; then it enacts the
+proposals and records the new accepted state to the lock.
+
+The baseline is the lock, not a git ref: it's the state Boundry *owns*, so
+"accepted" never collapses into merely "committed". (One consequence, by design:
+the gate leans on `approve` being a human act — the lock moves only when someone
+approves. That's why the skill forbids agents from running it.)
 
 **To retire an edge or a box, propose its removal** with `#proposal-delete`
 instead of deleting it. The marker colours it red; a pending deletion changes
@@ -258,12 +264,12 @@ Point your agents at
 [`.claude/skills/define-architecture-boundaries`](.claude/skills/define-architecture-boundaries/SKILL.md)
 and they'll follow this protocol.
 
-### Catching drift — the lock and `annotate` (prototype)
+### Catching drift — `annotate` (prototype)
 
-`verify --base` trusts git for the baseline, which conflates *approved* with
-*committed*. If you'd rather Boundry own that baseline: `approve` records the
-accepted model to **`boundry.lock`** beside the diagram, and `annotate` compares
-against it — no git ref required.
+`verify` catches a self-grant and fails; `annotate` is the other half — it
+*rewrites* the same drift into a reviewable proposal. Both read the same baseline,
+the accepted **`boundry.lock`** that `approve` records beside the diagram, so they
+can never disagree about what "accepted" means.
 
 ```bash
 boundry approve  --arch arch          # enact proposals AND write boundry.lock
@@ -291,8 +297,8 @@ outright. Requires **LikeC4 ≥ 1.58** to render.
 
 A proposal nested inside a box is invisible at a wider zoom: at the top level the
 box collapses and its inner `#proposed` edge disappears. So `diff` generates a
-**focused view for every layer that holds a pending change** — the tightest scope
-that actually draws it — into a derived `boundry.diff.likec4`:
+**focused view for every layer that draws a pending change** — into a derived
+`boundry.diff.likec4`:
 
 ```bash
 boundry diff --arch arch              # (re)write boundry.diff.likec4
@@ -307,11 +313,20 @@ styling step. Boxes are styled *in place* (never force-included), so a nested
 proposal stays in its own layer; unchanged elements keep their defaults; and the
 rules live only in the generated views, so your own views are untouched.
 
+A changed edge is drawn at **every altitude it appears**, not only the
+common-ancestor layer — so a cross-system dependency between two deeply-nested
+leaves gets a view at each endpoint's system and container as well as at the
+shared root. Open the change at whatever altitude matters (the whole system, a
+specific container) instead of being dropped at the noisy root view. `diff` emits
+only the layers that genuinely draw the edge: never above the common ancestor
+(where it collapses to an undrawn self-loop), never the leaf endpoints themselves.
+
 The file is a **derived artifact**: overwritten every run, removed when nothing is
-proposed, so it always matches the current diagram — regenerate it after
-`approve`. It reads the diagram's own markers (not the lock), so it frames
-whatever `annotate` or a human has marked. Being derived, it's a `.gitignore`
-candidate (`boundry.diff.likec4`).
+proposed, so it always matches the current diagram. `approve` deletes it too, as
+part of enacting — the moment the last proposal is approved the views are stale,
+so the post-approve workspace validates clean. It reads the diagram's own markers
+(not the lock), so it frames whatever `annotate` or a human has marked. Being
+derived, it's a `.gitignore` candidate (`boundry.diff.likec4`).
 
 > Rendering the coloured diff views needs **LikeC4 ≥ 1.58** (the style-rule syntax
 > Boundry emits). Boundry itself depends on that floor; the tool you review with
@@ -322,8 +337,8 @@ candidate (`boundry.diff.likec4`).
 ```
 boundry check    [--arch <dir>] [--cwd <dir>] [sources...]
 boundry generate [--arch <dir>] [--cwd <dir>] [--out <file>]
-boundry verify   [--arch <dir>] [--cwd <dir>] --base <git-ref>
-boundry approve  [--arch <dir>] [--cwd <dir>] [--base <git-ref>]
+boundry verify   [--arch <dir>] [--cwd <dir>]
+boundry approve  [--arch <dir>] [--cwd <dir>]
 boundry annotate [--arch <dir>]
 boundry diff     [--arch <dir>]
 ```
@@ -333,15 +348,16 @@ boundry diff     [--arch <dir>]
 | `--arch <dir>` | LikeC4 workspace directory (all `.likec4` files in it are merged). Default `.`. |
 | `--cwd <dir>` | Repo root to check. `folder` paths are relative to it. Lets you run from anywhere. |
 | `--out <file>` | `generate` only: where to write the dependency-cruiser config. Default `.dependency-cruiser.cjs`. |
-| `--base <ref>` | `verify`/`approve`: the git ref holding the approved diagram to compare against. |
 | `sources...` | `check` only: paths to lint. Default `src`. |
 
 - **`check`** compiles the rules and runs the linter. Exits non-zero on any violation.
 - **`generate`** just emits the dependency-cruiser config so you can commit it or
   run `depcruise` yourself.
-- **`verify`** rejects dependencies granted without a proposal.
-- **`approve`** enacts markers (strips `#proposed`, removes `#proposal-delete`) and
-  writes `boundry.lock`. For humans, not agents.
+- **`verify`** rejects dependencies granted without a proposal, comparing the
+  diagram against the accepted `boundry.lock`. Needs a lock — run `approve` once
+  to record one.
+- **`approve`** runs the same gate, then enacts markers (strips `#proposed`,
+  removes `#proposal-delete`) and writes `boundry.lock`. For humans, not agents.
 - **`annotate`** rewrites undeclared additions as `#proposed`, diffing against
   `boundry.lock`.
 - **`diff`** generates a focused, colour-coded review view per layer that holds a
@@ -366,9 +382,8 @@ jobs:
         with: { node-version: 20 }
       - run: npm ci
       - run: npx boundry check --arch arch src
-      # On PRs, also reject dependencies granted without a proposal.
-      - run: npx boundry verify --arch arch --base origin/${{ github.base_ref }}
-        if: github.event_name == 'pull_request'
+      # Reject any dependency granted without a proposal, vs the committed lock.
+      - run: npx boundry verify --arch arch
 ```
 
 ## Programmatic use (SDK)

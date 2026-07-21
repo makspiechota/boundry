@@ -44,6 +44,48 @@ function parentScope(fqn: string): Scope {
 }
 
 /**
+ * Every layer that actually *draws* the edge `from -> to`, so a reviewer can open
+ * the change at whatever altitude matters — the whole system, a specific
+ * container, or the endpoint's immediate parent — not only the auto-picked common
+ * ancestor (issue #7). The set is derived from how LikeC4's `include *` renders a
+ * scoped view, verified against 1.58:
+ *
+ *   - The tightest common ancestor draws it nested (both endpoints inside).
+ *   - Every proper ancestor of an endpoint *below* that common ancestor draws it
+ *     too: that side's subtree is expanded and the far endpoint is pulled in as a
+ *     boundary node (e.g. `of s1` → `s1.c1 -> s2`).
+ *   - Ancestors *above* the common ancestor are deliberately excluded: both
+ *     endpoints collapse into the same child there, so the edge becomes a
+ *     self-loop and LikeC4 draws nothing. The common ancestor is the widest layer
+ *     that still draws it.
+ *
+ * So the scopes are the common ancestor plus each endpoint's ancestor chain from
+ * just below it down to the endpoint's parent — never the endpoints themselves
+ * (a view scoped *to* a leaf endpoint has an empty subtree).
+ */
+function edgeScopes(from: string, to: string): Scope[] {
+  const common = commonScope(from, to);
+  const depthOf = (scope: Scope): number => (scope ? scope.split('.').length : 0);
+  const commonDepth = depthOf(common);
+
+  const byId = new Map<string, Scope>();
+  const add = (scope: Scope): void => {
+    byId.set(scopeViewId(scope), scope);
+  };
+  add(common);
+  for (const endpoint of [from, to]) {
+    const parts = endpoint.split('.');
+    // Proper ancestors of the endpoint strictly below the common ancestor: prefix
+    // lengths (commonDepth + 1) .. (parts.length - 1). The last is the endpoint's
+    // parent; the endpoint itself (full length) is never a scope.
+    for (let len = commonDepth + 1; len <= parts.length - 1; len++) {
+      add(parts.slice(0, len).join('.'));
+    }
+  }
+  return [...byId.values()];
+}
+
+/**
  * Deterministic highlight rules for the marker tags actually in use. Referencing
  * an undeclared tag is a hard LikeC4 error, and a tag can only be *used* if it is
  * declared — so emitting rules only for seen tags is always safe.
@@ -430,11 +472,19 @@ export class LikeC4Visualizer implements VisualizerPort {
    *   - `#proposal-delete` markers take their whole edge or box with them, so
    *     approving a proposed removal actually removes it.
    * All other formatting is left intact.
+   *
+   * The derived `boundry.diff.likec4` is skipped, not approved: it holds no real
+   * markers, only view rules that *reference* the marker tags (`style element.tag
+   * = #proposed`, `include … where tag is #proposed`). Splicing those `#proposed`
+   * tokens out would corrupt the rules into invalid LikeC4. And it is stale the
+   * moment the last proposal is enacted — it describes changes that are now
+   * approved — so approve deletes it, leaving a workspace `likec4 validate` accepts.
    */
   async approve(): Promise<void> {
     const likec4: any = await LikeC4.fromWorkspace(this.workspaceDir);
     for (const doc of likec4.LangiumDocuments.all) {
       const filePath: string = doc.uri.fsPath;
+      if (filePath.endsWith(DIFF_FILE)) continue;
       const text: string = doc.textDocument?.getText?.() ?? readFileSync(filePath, 'utf8');
       const ranges = collectApprovalRanges(doc.parseResult?.value, text);
       if (ranges.length === 0) continue;
@@ -445,6 +495,12 @@ export class LikeC4Visualizer implements VisualizerPort {
       }
       writeFileSync(filePath, next);
     }
+
+    // Enacting the last proposal makes any diff views stale — they frame changes
+    // that are now approved. Remove the derived artifact so the post-approve
+    // workspace validates and never renders an approved-away change.
+    const diffPath = join(this.workspaceDir, DIFF_FILE);
+    if (existsSync(diffPath)) rmSync(diffPath);
   }
 
   /**
@@ -566,10 +622,12 @@ export class LikeC4Visualizer implements VisualizerPort {
   /**
    * Generate a focused diff view for every layer that holds a pending change.
    * Walks the diagram's own `#proposed` / `#proposal-delete` markers (never the
-   * lock — a `#proposal-delete` has no lock delta), buckets each change into the
-   * tightest scope that draws it, and writes one `view … of <scope>` per bucket
-   * to a derived `boundry.diff.likec4`. The file is overwritten each run and
-   * removed when nothing is proposed, so it always reflects the current diagram.
+   * lock — a `#proposal-delete` has no lock delta) and writes one `view … of
+   * <scope>` per layer to a derived `boundry.diff.likec4`. A box is bucketed into
+   * its parent layer; an edge into *every* layer that draws it (see `edgeScopes`),
+   * so a cross-system dependency can be reviewed at each altitude, not only the
+   * common-ancestor layer. The file is overwritten each run and removed when
+   * nothing is proposed, so it always reflects the current diagram.
    */
   async emitDiffViews(): Promise<DiffView[]> {
     const likec4: any = await LikeC4.fromWorkspace(this.workspaceDir);
@@ -599,7 +657,9 @@ export class LikeC4Visualizer implements VisualizerPort {
         if (statement?.$type === 'Relation') {
           const from = fqnOf(endpointElement(statement.source));
           const to = fqnOf(endpointElement(statement.target));
-          if (from && to) record(commonScope(from, to));
+          // One view per layer that actually draws this edge, so the reviewer can
+          // judge it at every altitude — not only the common-ancestor layer (#7).
+          if (from && to) for (const scope of edgeScopes(from, to)) record(scope);
         } else if (statement?.$type === 'Element') {
           const fqn = fqnOf(statement);
           if (fqn) record(parentScope(fqn));

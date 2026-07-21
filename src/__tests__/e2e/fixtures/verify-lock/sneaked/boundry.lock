@@ -1,0 +1,12 @@
+{
+  "modules": [
+    { "id": "a", "title": "A", "path": "src/a", "kind": "folder" },
+    { "id": "b", "title": "B", "path": "src/b", "kind": "folder" },
+    { "id": "c", "title": "C", "path": "src/c", "kind": "folder" }
+  ],
+  "allowed": [
+    { "from": "a", "to": "b" }
+  ],
+  "wildcards": [],
+  "exemptImporters": []
+}

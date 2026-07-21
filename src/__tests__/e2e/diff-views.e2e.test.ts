@@ -56,6 +56,35 @@ const nestedProposalIsColouredOnlyInItsLayer: Scenario<DiffGiven, DiffOutcome> =
 
 testE2E([nestedProposalIsColouredOnlyInItsLayer]);
 
+// Issue #7: a deep cross-system edge must be reviewable at every altitude it is
+// drawn, not just the common-ancestor (root) layer. The proposal between two
+// nested leaves (s1.c1.a -> s2.c2.b) emits five views — root, and each endpoint's
+// system and container — never the leaf endpoints themselves, never above the
+// common ancestor (where it would collapse to a self-loop). It is coloured
+// amber + solid at each, collapsed to the shallowest visible endpoint per side.
+const deepEdgeIsDrawnAtEveryAltitude: Scenario<DiffGiven, DiffOutcome> = {
+  name: "diff · a deep cross-system edge emits one view per altitude it is drawable at",
+  given: { archPath: `${FIXTURES}/deep` },
+  when: emittingDiffViews(),
+  then: (outcome) => {
+    emitsLayers([
+      { id: "boundry_diff_root", changes: 1 },
+      { id: "boundry_diff_s1", changes: 1 },
+      { id: "boundry_diff_s1_c1", changes: 1 },
+      { id: "boundry_diff_s2", changes: 1 },
+      { id: "boundry_diff_s2_c2", changes: 1 },
+    ])(outcome);
+    viewColorsEdge("boundry_diff_root", "s1->s2", "amber", "solid")(outcome);
+    viewColorsEdge("boundry_diff_s1", "s1.c1->s2", "amber", "solid")(outcome);
+    viewColorsEdge("boundry_diff_s1_c1", "s1.c1.a->s2", "amber", "solid")(outcome);
+    viewColorsEdge("boundry_diff_s2", "s1->s2.c2", "amber", "solid")(outcome);
+    viewColorsEdge("boundry_diff_s2_c2", "s1->s2.c2.b", "amber", "solid")(outcome);
+    viewIsUnhighlighted("index")(outcome);
+  },
+};
+
+testE2E([deepEdgeIsDrawnAtEveryAltitude]);
+
 // Boxes, not just edges: a #proposed box fills amber, a #proposal-delete box
 // fills red, deterministically — while unchanged boxes and edges keep their
 // defaults. This is the seam issue #4 closes: colouring with no inline styling.

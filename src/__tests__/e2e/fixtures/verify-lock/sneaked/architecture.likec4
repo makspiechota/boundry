@@ -1,0 +1,31 @@
+specification {
+  element module {
+    style { shape rectangle }
+  }
+  tag proposed {
+    color #f59e0b
+  }
+}
+
+model {
+  module a 'A' {
+    metadata { folder 'src/a' }
+  }
+  module b 'B' {
+    metadata { folder 'src/b' }
+  }
+  module c 'C' {
+    metadata { folder 'src/c' }
+  }
+
+  a -> b
+  // A bare grant added since the last approve — in the diagram's allow-list but
+  // not in the accepted lock. verify must catch it as a self-approval.
+  a -> c
+}
+
+views {
+  view index {
+    include *
+  }
+}

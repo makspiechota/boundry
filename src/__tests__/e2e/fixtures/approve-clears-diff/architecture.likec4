@@ -1,0 +1,12 @@
+specification {
+  element module { style { shape rectangle } }
+  tag proposed { color #f59e0b }
+}
+model {
+  module a 'A' { metadata { folder 'src/a' } }
+  module b 'B' { metadata { folder 'src/b' } }
+  a -> b #proposed
+}
+views {
+  view index { include * }
+}
