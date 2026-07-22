@@ -293,38 +293,41 @@ this styling back out with the marker: a `#proposed` edge returns to bare, a
 `#proposed` box stays but loses its colour, a `#proposal-delete` is removed
 outright. Requires **LikeC4 ≥ 1.58** to render.
 
-### Reviewing a proposal — per-layer diff views (prototype)
+### Reviewing a proposal — the diff view (prototype)
 
-A proposal nested inside a box is invisible at a wider zoom: at the top level the
-box collapses and its inner `#proposed` edge disappears. So `diff` generates a
-**focused view for every layer that draws a pending change** — into a derived
-`boundry.diff.likec4`:
+`diff` generates a single **proposed-changes** view — every pending change on one
+landing — into a derived `boundry.diff.likec4`:
 
 ```bash
 boundry diff --arch arch              # (re)write boundry.diff.likec4
-likec4 serve arch                     # review each layer, changes coloured
+likec4 serve arch                     # open 'Boundry diff — proposed changes'
 ```
 
 The highlighting is **generated, not hand-styled** — `diff` emits the LikeC4
-style rules into the derived file, so every `#proposed` box fills amber and edge
-goes amber + solid, every `#proposal-delete` red, deterministically. That closes
-the last manual seam: `annotate` marks, `diff` colours, no agent-dependent
-styling step. Boxes are styled *in place* (never force-included), so a nested
-proposal stays in its own layer; unchanged elements keep their defaults; and the
-rules live only in the generated views, so your own views are untouched.
+rules into the derived file, so every `#proposed` box fills amber and edge goes
+amber + solid, every `#proposal-delete` red, deterministically. That closes the
+last manual seam: `annotate` marks, `diff` colours, no agent-dependent styling
+step. Unchanged elements keep their defaults, and the rules live only in the
+generated view, so your own views are untouched.
 
-A changed edge is drawn at **every altitude it appears**, not only the
-common-ancestor layer — so a cross-system dependency between two deeply-nested
-leaves gets a view at each endpoint's system and container as well as at the
-shared root. Open the change at whatever altitude matters (the whole system, a
-specific container) instead of being dropped at the noisy root view. `diff` emits
-only the layers that genuinely draw the edge: never above the common ancestor
-(where it collapses to an undrawn self-loop), never the leaf endpoints themselves.
+The view uses `include * -> * where tag is #proposed` (no bare `include *`), so it
+pulls in exactly the proposed edges and the leaf modules they touch — a
+deeply-nested proposal renders as its **own coloured node** instead of collapsing
+into a grey ancestor. A proposed *module* with no edge yet is included too, so a
+proposed-but-unwired box still shows. Each change nests under its layer/system for
+context.
+
+For a small change you can ask for the old per-layer shape instead — one focused
+`view … of <scope>` for every layer that draws a change:
+
+```bash
+boundry diff --arch arch --per-layer
+```
 
 The file is a **derived artifact**: overwritten every run, removed when nothing is
 proposed, so it always matches the current diagram. `approve` deletes it too, as
-part of enacting — the moment the last proposal is approved the views are stale,
-so the post-approve workspace validates clean. It reads the diagram's own markers
+part of enacting — the moment the last proposal is approved the view is stale, so
+the post-approve workspace validates clean. It reads the diagram's own markers
 (not the lock), so it frames whatever `annotate` or a human has marked. Being
 derived, it's a `.gitignore` candidate (`boundry.diff.likec4`).
 
@@ -340,7 +343,7 @@ boundry generate [--arch <dir>] [--cwd <dir>] [--out <file>]
 boundry verify   [--arch <dir>] [--cwd <dir>]
 boundry approve  [--arch <dir>] [--cwd <dir>]
 boundry annotate [--arch <dir>]
-boundry diff     [--arch <dir>]
+boundry diff     [--arch <dir>] [--per-layer]
 ```
 
 | Flag | Meaning |
@@ -348,6 +351,7 @@ boundry diff     [--arch <dir>]
 | `--arch <dir>` | LikeC4 workspace directory (all `.likec4` files in it are merged). Default `.`. |
 | `--cwd <dir>` | Repo root to check. `folder` paths are relative to it. Lets you run from anywhere. |
 | `--out <file>` | `generate` only: where to write the dependency-cruiser config. Default `.dependency-cruiser.cjs`. |
+| `--per-layer` | `diff` only: emit one focused view per layer instead of the single proposed-changes view. |
 | `sources...` | `check` only: paths to lint. Default `src`. |
 
 - **`check`** compiles the rules and runs the linter. Exits non-zero on any violation.
@@ -360,8 +364,9 @@ boundry diff     [--arch <dir>]
   removes `#proposal-delete`) and writes `boundry.lock`. For humans, not agents.
 - **`annotate`** rewrites undeclared additions as `#proposed`, diffing against
   `boundry.lock`.
-- **`diff`** generates a focused, colour-coded review view per layer that holds a
-  pending change, into a derived `boundry.diff.likec4`.
+- **`diff`** generates a single colour-coded "proposed changes" review view into a
+  derived `boundry.diff.likec4` (or, with `--per-layer`, one focused view per layer
+  that draws a change).
 
 Boundry warns (but does not fail) when a mapped folder matches **zero** files, and
 **fails outright** when a check analysed no files at all — so a passing check can

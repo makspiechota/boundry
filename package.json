@@ -1,6 +1,6 @@
 {
   "name": "boundry",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Compile a C4 architecture diagram into a deterministic dependency linter. Deterministic architectural guardrails for AI agents and humans.",
   "type": "module",
   "license": "MIT",

@@ -108,13 +108,13 @@ export class Pipeline {
   }
 
   /**
-   * (Re)generate a focused diff view per layer that holds a pending change, so a
-   * reviewer sees each proposal in the scope where it is actually drawn — a
-   * proposal nested in a box is invisible once that box collapses at a wider
-   * view. Reads the diagram's own `#proposed` / `#proposal-delete` markers, so it
-   * composes with `annotate` (annotate marks drift, this frames it).
+   * (Re)generate the review views for the diagram's pending changes. By default a
+   * single `boundry_diff` landing view draws every `#proposed` / `#proposal-delete`
+   * change at once; with `perLayer`, one focused view per layer that draws a change.
+   * Reads the diagram's own markers, so it composes with `annotate` (annotate marks
+   * drift, this frames it).
    */
-  async diffViews(): Promise<DiffView[]> {
-    return this.visualizer.emitDiffViews();
+  async diffViews(perLayer = false): Promise<DiffView[]> {
+    return this.visualizer.emitDiffViews(perLayer);
   }
 }

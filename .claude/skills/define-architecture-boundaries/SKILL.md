@@ -240,7 +240,7 @@ boundry check   --arch <dir> [--cwd <repo>] src   # run the linter; exit 1 on an
 boundry generate --arch <dir>                     # emit the dependency-cruiser config
 boundry verify  --arch <dir>                       # reject edges granted without #proposed (vs boundry.lock)
 boundry approve --arch <dir>                        # HUMAN ONLY: strip markers = approve, update boundry.lock
-boundry diff    --arch <dir>                       # write per-layer review views of what you proposed
+boundry diff    --arch <dir> [--per-layer]         # write the 'proposed changes' review view (--per-layer: one view per layer)
 ```
 
 `--arch` is the LikeC4 workspace directory (all `.likec4` files in it are

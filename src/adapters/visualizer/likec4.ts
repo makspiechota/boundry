@@ -123,6 +123,72 @@ function renderDiffView(scope: Scope, highlight: string[]): string {
   return `${opener}\n${lines.join('\n')}\n  }`;
 }
 
+/** A marked edge or box lifted from the diagram, tagged with its marker token. */
+interface MarkedEdge {
+  from: string;
+  to: string;
+  marker: string;
+}
+interface MarkedBox {
+  fqn: string;
+  marker: string;
+}
+
+/** Every proper ancestor of an element, shallowest first — its parent chain up to (not including) the root. */
+function ancestorFqns(fqn: string): string[] {
+  const parts = fqn.split('.');
+  const out: string[] = [];
+  for (let len = 1; len <= parts.length - 1; len++) out.push(parts.slice(0, len).join('.'));
+  return out;
+}
+
+/**
+ * The single `boundry_diff` view: one landing that draws *every* pending change at
+ * once, with uniform highlighting and no empty views. It sidesteps the per-layer
+ * shape's two failure modes (issue #8):
+ *
+ *   - **No collapse.** `include * -> * where tag is #proposed` (with NO bare
+ *     `include *`) pulls in exactly the proposed edges and the leaf modules they
+ *     touch — so a deeply-nested proposed leaf renders as its own amber node
+ *     instead of collapsing into a grey ancestor, as it does under `include *`.
+ *   - **Standalone boxes.** A `#proposed` box with no edge is included by fqn, so
+ *     a proposed-but-unwired module still shows (and is coloured by the style rule).
+ *
+ * Every endpoint's and box's full ancestor chain is included too, so each change
+ * nests under its layer/system for context (verified against LikeC4 1.58). Rules
+ * are emitted only for marker tags actually in use — referencing an undeclared tag
+ * is a hard LikeC4 error.
+ */
+function renderSingleView(edges: MarkedEdge[], boxes: MarkedBox[], usedTags: Set<string>): string {
+  const lines: string[] = [`    title 'Boundry diff — proposed changes'`];
+
+  // Edge includes: one per marker that appears on an edge. These pull the proposed
+  // edges and their endpoint leaves in at leaf level, uncollapsed.
+  if (edges.some((e) => e.marker === '#proposed')) {
+    lines.push('    include * -> * where tag is #proposed with { color amber; line solid }');
+  }
+  if (edges.some((e) => e.marker === '#proposal-delete')) {
+    lines.push('    include * -> * where tag is #proposal-delete with { color red; line solid }');
+  }
+
+  // Element includes: the proposed/proposal-delete boxes themselves (so a standalone
+  // one shows), plus the full ancestor chain of every endpoint and box (so each
+  // change nests under its containers). Deterministic: sorted, de-duplicated.
+  const includeFqns = new Set<string>();
+  for (const box of boxes) includeFqns.add(box.fqn);
+  const anchors = [...edges.flatMap((e) => [e.from, e.to]), ...boxes.map((b) => b.fqn)];
+  for (const fqn of anchors) for (const ancestor of ancestorFqns(fqn)) includeFqns.add(ancestor);
+  if (includeFqns.size) {
+    lines.push(`    include ${[...includeFqns].sort().join(', ')}`);
+  }
+
+  // Style rules colour the tagged boxes (edges are coloured by their include above).
+  if (usedTags.has('proposed')) lines.push('    style element.tag = #proposed { color amber }');
+  if (usedTags.has('proposal-delete')) lines.push('    style element.tag = #proposal-delete { color red }');
+
+  return `  view boundry_diff {\n${lines.join('\n')}\n  }`;
+}
+
 /**
  * An exemption pattern has to be a usable regex before it reaches the linter. A
  * broken or empty one would otherwise be a silent hole: it exempts files from
@@ -620,29 +686,29 @@ export class LikeC4Visualizer implements VisualizerPort {
   }
 
   /**
-   * Generate a focused diff view for every layer that holds a pending change.
-   * Walks the diagram's own `#proposed` / `#proposal-delete` markers (never the
-   * lock — a `#proposal-delete` has no lock delta) and writes one `view … of
-   * <scope>` per layer to a derived `boundry.diff.likec4`. A box is bucketed into
-   * its parent layer; an edge into *every* layer that draws it (see `edgeScopes`),
-   * so a cross-system dependency can be reviewed at each altitude, not only the
-   * common-ancestor layer. The file is overwritten each run and removed when
-   * nothing is proposed, so it always reflects the current diagram.
+   * Generate the review views for the diagram's pending changes, into a derived
+   * `boundry.diff.likec4`. Walks the diagram's own `#proposed` / `#proposal-delete`
+   * markers (never the lock — a `#proposal-delete` has no lock delta).
+   *
+   * By default it emits a **single `boundry_diff` view** that draws every change at
+   * once, uncollapsed and uniformly highlighted (see `renderSingleView`) — the diff
+   * landing. With `perLayer`, it instead emits one focused `view … of <scope>` for
+   * every layer that draws a change (a box in its parent layer; an edge in every
+   * layer that draws it, per `edgeScopes`) — useful for a small change, but it
+   * multiplies views and collapses deeply-nested proposals into grey ancestors on
+   * a broad `include *`, which is why the single view is the default (issue #8).
+   *
+   * The file is overwritten each run and removed when nothing is proposed, so it
+   * always reflects the current diagram.
    */
-  async emitDiffViews(): Promise<DiffView[]> {
+  async emitDiffViews(perLayer = false): Promise<DiffView[]> {
     const likec4: any = await LikeC4.fromWorkspace(this.workspaceDir);
 
-    // scopeViewId -> { scope, changes } — deterministic key, so the same diagram
-    // always yields the same set of views.
-    const layers = new Map<string, { scope: Scope; changes: number }>();
-    const record = (scope: Scope): void => {
-      const key = scopeViewId(scope);
-      const layer = layers.get(key) ?? { scope, changes: 0 };
-      layer.changes += 1;
-      layers.set(key, layer);
-    };
-    // Which marker tags actually appear — so the emitted highlight rules only ever
-    // reference declared tags (an undeclared tag reference is a hard LikeC4 error).
+    // Lift every marked edge and box once; both view shapes are built from this.
+    const edges: MarkedEdge[] = [];
+    const boxes: MarkedBox[] = [];
+    // Which marker tags actually appear — so the emitted rules only ever reference
+    // declared tags (an undeclared tag reference is a hard LikeC4 error).
     const usedTags = new Set<string>();
 
     for (const doc of likec4.LangiumDocuments.all) {
@@ -657,23 +723,58 @@ export class LikeC4Visualizer implements VisualizerPort {
         if (statement?.$type === 'Relation') {
           const from = fqnOf(endpointElement(statement.source));
           const to = fqnOf(endpointElement(statement.target));
-          // One view per layer that actually draws this edge, so the reviewer can
-          // judge it at every altitude — not only the common-ancestor layer (#7).
-          if (from && to) for (const scope of edgeScopes(from, to)) record(scope);
+          if (from && to) edges.push({ from, to, marker });
         } else if (statement?.$type === 'Element') {
           const fqn = fqnOf(statement);
-          if (fqn) record(parentScope(fqn));
+          if (fqn) boxes.push({ fqn, marker });
         }
       });
     }
 
     const diffPath = join(this.workspaceDir, DIFF_FILE);
-    if (layers.size === 0) {
+    if (edges.length === 0 && boxes.length === 0) {
       // Nothing proposed — clear any stale views so `serve` never renders a diff
       // that no longer exists (and never dangles a reference to an approved-away box).
       if (existsSync(diffPath)) rmSync(diffPath);
       return [];
     }
+
+    const { header, body, views } = perLayer
+      ? this.perLayerViews(edges, boxes, usedTags)
+      : {
+          header: 'a single landing view of every pending change',
+          body: renderSingleView(edges, boxes, usedTags),
+          views: [{ id: 'boundry_diff', changes: edges.length + boxes.length }],
+        };
+
+    writeFileSync(
+      diffPath,
+      `// Generated by \`boundry diff\` — ${header}.\n` +
+        `// Derived artifact: regenerate after approve; do not hand-edit.\n` +
+        `views {\n${body}\n}\n`,
+    );
+    return views;
+  }
+
+  /**
+   * The `--per-layer` shape: buckets each change into every layer that draws it and
+   * renders one scoped `view … of <scope>` per layer. Kept as an opt-in to the
+   * single-view default.
+   */
+  private perLayerViews(
+    edges: MarkedEdge[],
+    boxes: MarkedBox[],
+    usedTags: Set<string>,
+  ): { header: string; body: string; views: DiffView[] } {
+    const layers = new Map<string, { scope: Scope; changes: number }>();
+    const record = (scope: Scope): void => {
+      const key = scopeViewId(scope);
+      const layer = layers.get(key) ?? { scope, changes: 0 };
+      layer.changes += 1;
+      layers.set(key, layer);
+    };
+    for (const edge of edges) for (const scope of edgeScopes(edge.from, edge.to)) record(scope);
+    for (const box of boxes) record(parentScope(box.fqn));
 
     // Root first, then by fqn, so the output is stable across runs.
     const ordered = [...layers.values()].sort((a, b) => {
@@ -682,18 +783,14 @@ export class LikeC4Visualizer implements VisualizerPort {
       return a.scope.localeCompare(b.scope);
     });
     const highlight = highlightLines(usedTags);
-    const body = ordered.map((layer) => renderDiffView(layer.scope, highlight)).join('\n');
-    writeFileSync(
-      diffPath,
-      `// Generated by \`boundry diff\` — one focused view per layer with a pending\n` +
-        `// change. Derived artifact: regenerate after approve; do not hand-edit.\n` +
-        `views {\n${body}\n}\n`,
-    );
-
-    return ordered.map((layer) => ({
-      id: scopeViewId(layer.scope),
-      scope: layer.scope,
-      changes: layer.changes,
-    }));
+    return {
+      header: 'one focused view per layer with a pending change',
+      body: ordered.map((layer) => renderDiffView(layer.scope, highlight)).join('\n'),
+      views: ordered.map((layer) => ({
+        id: scopeViewId(layer.scope),
+        scope: layer.scope,
+        changes: layer.changes,
+      })),
+    };
   }
 }

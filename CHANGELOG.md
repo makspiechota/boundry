@@ -4,6 +4,28 @@ All notable changes to Boundry are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [semver](https://semver.org/).
 
+## [0.6.0] — 2026-07-22
+
+### Changed
+
+- **`boundry diff` now emits a single "proposed changes" view by default** ([#8]),
+  instead of one view per changed layer. The per-layer shape (added in 0.4.0,
+  extended per-altitude in 0.5.0) had two failure modes on real changes: it
+  multiplied views (one multi-slice change produced ~21), and its per-layer
+  `include *` collapsed deeply-nested proposals into their grey ancestor box, so a
+  nested proposed leaf silently lost its amber. The new `boundry_diff` view uses
+  `include * -> * where tag is #proposed` with **no** bare `include *`, so it pulls
+  in exactly the proposed edges and the leaf modules they touch — every change is
+  drawn at leaf level, uncollapsed and uniformly coloured, on one landing. A
+  `#proposed` box with no edge yet is included by fqn so a proposed-but-unwired
+  module still shows, and every endpoint's ancestor chain is included so each
+  change nests under its layer/system for context. `approve` still deletes the
+  derived file (0.5.0 behaviour).
+  - The per-altitude per-layer views from 0.5.0 remain available behind
+    **`boundry diff --per-layer`** — useful for a small change, opt-in.
+
+[#8]: https://github.com/makspiechota/boundry/issues/8
+
 ## [0.5.0] — 2026-07-21
 
 ### Fixed

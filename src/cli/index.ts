@@ -6,7 +6,7 @@ import { LikeC4Visualizer } from '../adapters/visualizer/likec4.js';
 import { DepCruiserEnforcer } from '../adapters/enforcer/depcruiser.js';
 
 const USAGE =
-  'usage: boundry <generate|check|approve|verify|annotate|diff> [--arch <dir>] [--cwd <dir>] [--out <file>] [sources...]';
+  'usage: boundry <generate|check|approve|verify|annotate|diff> [--arch <dir>] [--cwd <dir>] [--out <file>] [--per-layer] [sources...]';
 
 function optValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -162,7 +162,8 @@ async function main(): Promise<void> {
   }
 
   if (command === 'diff') {
-    const views = await pipeline.diffViews();
+    const perLayer = rest.includes('--per-layer');
+    const views = await pipeline.diffViews(perLayer);
     const diffFile = join(archDir, 'boundry.diff.likec4');
     if (views.length === 0) {
       console.log('Boundry: ✓ nothing proposed — no diff views to draw');
@@ -172,10 +173,10 @@ async function main(): Promise<void> {
       `Boundry: ✎ wrote ${views.length} diff view(s) to ${relative(process.cwd(), diffFile)}:`,
     );
     for (const view of views) {
-      const layer = view.scope ?? 'root';
-      console.log(`  ${view.id}  (layer ${layer}, ${view.changes} change(s))`);
+      const where = perLayer ? `layer ${view.scope ?? 'root'}, ` : '';
+      console.log(`  ${view.id}  (${where}${view.changes} change(s))`);
     }
-    console.log('  Open the diagram in `likec4 serve` to review each layer.');
+    console.log('  Open the diagram in `likec4 serve` to review.');
     return;
   }
 

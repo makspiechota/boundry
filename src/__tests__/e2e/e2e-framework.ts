@@ -435,12 +435,12 @@ async function layoutViews(workDir: string): Promise<Record<string, RenderedView
  * pristine), then re-read AND lay out the workspace through LikeC4 so a test can
  * assert both the generated source and that each view colours its layer's changes.
  */
-export function emittingDiffViews(): (given: DiffGiven) => Promise<DiffOutcome> {
+export function emittingDiffViews(perLayer = false): (given: DiffGiven) => Promise<DiffOutcome> {
   return async ({ archPath }) => {
     const workDir = mkdtempSync(join(tmpdir(), "boundry-diff-"));
     cpSync(resolve(archPath), workDir, { recursive: true });
     const pipeline = new Pipeline(new LikeC4Visualizer(workDir), new DepCruiserEnforcer());
-    const views = await pipeline.diffViews();
+    const views = await pipeline.diffViews(perLayer);
 
     const diffFile = join(workDir, "boundry.diff.likec4");
     const file = existsSync(diffFile) ? readFileSync(diffFile, "utf8") : null;

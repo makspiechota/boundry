@@ -21,7 +21,7 @@ const FIXTURES = "src/__tests__/e2e/fixtures/diff-views";
 const emitsAViewPerChangedLayer: Scenario<DiffGiven, DiffOutcome> = {
   name: "diff · writes one scoped view per layer that holds a pending change",
   given: { archPath: `${FIXTURES}/nested` },
-  when: emittingDiffViews(),
+  when: emittingDiffViews(true),
   then: (outcome) => {
     matchesDiffFile(`${FIXTURES}/nested/expected.boundry.diff.txt`)(outcome);
     emitsLayers([
@@ -41,7 +41,7 @@ testE2E([emitsAViewPerChangedLayer]);
 const nestedProposalIsColouredOnlyInItsLayer: Scenario<DiffGiven, DiffOutcome> = {
   name: "diff · a nested proposal is coloured in its layer's view, not the collapsed root",
   given: { archPath: `${FIXTURES}/nested` },
-  when: emittingDiffViews(),
+  when: emittingDiffViews(true),
   then: (outcome) => {
     // billing's view colours the proposed edge amber + solid...
     viewColorsEdge("boundry_diff_billing", "billing.invoicer->billing.ledger", "amber", "solid")(outcome);
@@ -65,7 +65,7 @@ testE2E([nestedProposalIsColouredOnlyInItsLayer]);
 const deepEdgeIsDrawnAtEveryAltitude: Scenario<DiffGiven, DiffOutcome> = {
   name: "diff · a deep cross-system edge emits one view per altitude it is drawable at",
   given: { archPath: `${FIXTURES}/deep` },
-  when: emittingDiffViews(),
+  when: emittingDiffViews(true),
   then: (outcome) => {
     emitsLayers([
       { id: "boundry_diff_root", changes: 1 },
@@ -91,7 +91,7 @@ testE2E([deepEdgeIsDrawnAtEveryAltitude]);
 const proposedAndDeletedBoxesAreFilled: Scenario<DiffGiven, DiffOutcome> = {
   name: "diff · proposed / proposal-delete boxes are filled amber / red",
   given: { archPath: `${FIXTURES}/boxes` },
-  when: emittingDiffViews(),
+  when: emittingDiffViews(true),
   then: (outcome) => {
     viewColorsNode("boundry_diff_root", "reporting", "amber")(outcome); // #proposed box
     viewColorsNode("boundry_diff_root", "legacy", "red")(outcome); // #proposal-delete box

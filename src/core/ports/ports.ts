@@ -24,26 +24,27 @@ export interface VisualizerPort {
    */
   styleMarkers(): Promise<void>;
   /**
-   * (Re)generate a focused diff view for every layer that holds a pending
-   * change — an edge or box tagged `#proposed` or `#proposal-delete`. Each view
-   * is scoped to the tightest element that contains the change (the model root
-   * for a top-level one), because a proposal nested inside a box is invisible
-   * once that box collapses at a wider scope. A derived artifact: overwritten
+   * (Re)generate the review views for the diagram's pending changes — edges and
+   * boxes tagged `#proposed` or `#proposal-delete`. By default a single
+   * `boundry_diff` landing view draws every change at once, uncollapsed and
+   * uniformly highlighted. With `perLayer`, one focused `view … of <scope>` is
+   * emitted per layer that draws a change instead. A derived artifact: overwritten
    * each run, and removed when nothing is proposed. Returns one entry per view.
    */
-  emitDiffViews(): Promise<DiffView[]>;
+  emitDiffViews(perLayer?: boolean): Promise<DiffView[]>;
 }
 
 /**
- * One emitted diff view: a single layer (element scope) that holds at least one
- * pending change, and how many changes fall in it.
+ * One emitted diff view. For the default single view there is one entry
+ * (`boundry_diff`) counting every pending change; in `perLayer` mode there is one
+ * per layer, each scoped to an element and counting the changes that fall in it.
  */
 export interface DiffView {
-  /** The generated view id, e.g. `boundry_diff_root` or `boundry_diff_billing`. */
+  /** The generated view id — `boundry_diff`, or `boundry_diff_<scope>` per layer. */
   id: string;
-  /** The scope element's fqn, or undefined for the model root. */
+  /** perLayer only: the scope element's fqn, or undefined for the model root. */
   scope?: string;
-  /** How many pending `#proposed` / `#proposal-delete` changes this layer holds. */
+  /** How many pending `#proposed` / `#proposal-delete` changes this view holds. */
   changes: number;
 }
 

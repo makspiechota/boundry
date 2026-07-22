@@ -1,0 +1,49 @@
+specification {
+  element module {
+    style { shape rectangle }
+  }
+  tag proposed {
+    color #f59e0b
+  }
+  tag proposal-delete {
+    color #ef4444
+  }
+}
+
+model {
+  module app 'Application' {
+    metadata { folder 'src/app' }
+    // A proposed module with no edge yet — must still show in the single view.
+    module shallow 'Shallow' {
+      #proposed
+      metadata { folder 'src/app/shallow' }
+    }
+    module mid 'Mid' {
+      metadata { folder 'src/app/mid' }
+      module deep 'Deep Leaf' {
+        metadata { file 'src/app/mid/deep.ts' }
+      }
+    }
+  }
+  module infra 'Infrastructure' {
+    metadata { folder 'src/infra' }
+    module client 'Client' {
+      metadata { file 'src/infra/client.ts' }
+    }
+    module legacy 'Legacy' {
+      #proposal-delete
+      metadata { file 'src/infra/legacy.ts' }
+    }
+  }
+
+  // A deeply-nested proposed edge (its leaf endpoint must render amber, not
+  // collapse into a grey ancestor) and a proposed removal.
+  app.mid.deep -> infra.client #proposed
+  app.mid.deep -> infra.legacy #proposal-delete
+}
+
+views {
+  view index {
+    include *
+  }
+}
